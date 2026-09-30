@@ -1,6 +1,6 @@
 # Which wAIst local setup
 
-Which wAIst starts with a React frontend built with Vite. A Python/FastAPI backend can be added later.
+Which wAIst is a waste sorting game with a neural network. It starts with a React frontend built with Vite. A Python/FastAPI backend can be added later.
 
 ## Prerequisites
 
@@ -10,20 +10,19 @@ Which wAIst starts with a React frontend built with Vite. A Python/FastAPI backe
 
 ## Run the frontend
 
-Open PowerShell in this project folder and run:
+Open a terminal in the `Which wAIst` project folder and run:
 ```powershell
-cd frontend
-npm install
+npm run setup
 npm run dev
 ```
 
 Open the local address printed by Vite, usually <http://localhost:5173/>. Click the test button to confirm React is working. Then edit `frontend/src/App.jsx` and save it; the browser should update automatically. Press `Ctrl+C` in PowerShell to stop the server.
 
-`npm install` is needed after a fresh copy or when dependencies change. On this computer, it has already completed.
+`npm run setup` installs frontend dependencies after a fresh copy or when dependencies change. On this computer, it has already completed.
 
 ## Useful checks
 
-Run these from `frontend/`:
+Run these from the `Which wAIst` project folder:
 
 ```powershell
 npm run lint
