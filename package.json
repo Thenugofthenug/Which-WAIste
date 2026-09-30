@@ -1,0 +1,11 @@
+{
+  "name": "which-waist",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "setup": "npm --prefix frontend install",
+    "dev": "npm --prefix frontend run dev",
+    "lint": "npm --prefix frontend run lint",
+    "build": "npm --prefix frontend run build"
+  }
+}
