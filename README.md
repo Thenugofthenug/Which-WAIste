@@ -16,9 +16,9 @@ npm run setup
 npm run dev
 ```
 
-Open the local address printed by Vite, usually <http://localhost:5173/>. Click the test button to confirm React is working. Then edit `frontend/src/App.jsx` and save it; the browser should update automatically. Press `Ctrl+C` in PowerShell to stop the server.
+Open the local address printed by Vite, usually <http://localhost:5173/>. Edit `frontend/src/App.jsx` and save it;  browser should update automatically. Press `Ctrl+C` in PowerShell to stop the server.
 
-`npm run setup` installs frontend dependencies after a fresh copy or when dependencies change. On this computer, it has already completed.
+`npm run setup` installs frontend dependencies after a fresh copy or when dependencies change.
 
 ## Useful checks
 
@@ -46,7 +46,7 @@ Which wAIst/
 ├─ backend/              add later for FastAPI
 ```
 
-As the frontend grows, add `src/components/` for reusable UI and `src/services/` for calls to the backend. There is no need to create empty folders yet.
+As the frontend grows, add `src/components/` for reusable UI and `src/services/` for calls to the backend.
 
 ## When you add FastAPI
 
