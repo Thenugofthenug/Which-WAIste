@@ -1,55 +1,97 @@
-# Which wAIst local setup
+# Which wAIste
 
-Which wAIst is a waste sorting game with a neural network. It starts with a React frontend built with Vite. A Python/FastAPI backend can be added later.
+The React frontend plays the original Python sorting game: 30 procedurally drawn
+trash items, three bins (Recycling, Compost, Landfill), then CNN training using
+your choices as labels. No image uploads or pretrained weights are needed.
 
-## Prerequisites
+## Start the backend
 
-- Node.js and npm. Check them in PowerShell with `node --version` and `npm --version`. Vite currently requires Node.js 20.19+ or 22.12+.
-- A code editor and a modern web browser.
-- Python is **not needed yet**. Python will be needed for when we begin working on the backend, then you can check it with `py --version` or `python --version`.
+Install uv, then run from the repository root:
 
-## Run the frontend
+```powershell
+uv sync
+uv run uvicorn backend.main:app --reload --port 8000
+```
 
-Open a terminal in the `Which wAIst` project folder and run:
+Health: http://localhost:8000/. API docs: http://localhost:8000/docs.
+
+## Start the frontend
+
+In a second terminal, from the repository root:
+
 ```powershell
 npm run setup
 npm run dev
 ```
 
-Open the local address printed by Vite, usually <http://localhost:5173/>. Edit `frontend/src/App.jsx` and save it;  browser should update automatically. Press `Ctrl+C` in PowerShell to stop the server.
+Open http://localhost:5173. A new game starts automatically. Choose a bin or press
+keys 1–3 for each item. The game shows your score against common guidelines;
+your own choice is kept as the training label even when it differs.
 
-`npm run setup` installs frontend dependencies after a fresh copy or when dependencies change.
+**Try guided demo** prepares labels from the common guidelines and trains for
+three epochs so you can preview the lesson without sorting 30 items. It runs the
+real CNN, not canned predictions; a short run may not improve accuracy.
+The normal game still uses your labels and 50 epochs.
 
-## Useful checks
+After all 30 items, click **Start Training**. Training runs in the backend, with
+progress shown in the browser.
+Loss and accuracy graphs show training and validation curves for each epoch;
+they remain visible when training finishes. Expand **View epoch values** to
+inspect the numbers. Starting another training run clears the previous curves.
+The CNN uses the original train/validation/test
+split, augmentation, 50 epochs, and best-validation model selection. Results
+show held-out item predictions, confidence percentages, and test accuracy.
+After training, a conveyor replay moves those test drawings past a camera and
+routes each to the CNN's selected bin. The network schematic shows the actual
+four convolution blocks and the three class scores. Pause, Play, Step, Replay,
+and speed controls let you follow the decision. Scores are the same averaged
+test predictions used in the results table, not simulated physical sensors.
+Reduced-motion preferences start the replay paused; use Step to inspect it.
+All replays now start paused for guided exploration. Four lesson buttons show
+the actual 64-by-64 input and pixel normalization, real activation maps from each
+convolution block, before/after class scores, and the selected bin. Before and
+after evaluation use exactly the same held-out items and augmented views.
+Each activation map is normalized to its own maximum, and maps are selected by
+mean response. They show responses, not human-readable reasons or saliency.
+The application uses a single dark navy-and-mint theme across all stages.
+On desktop the lab fills the screen: training controls and graphs share a sidebar,
+with sorting and decisions in the larger workspace. Wide screens place the guided
+lesson beside the conveyor. Panels scroll independently on shorter displays;
+tablets and phones use a stacked layout. Extra results and explanations expand
+on demand.
+The web game uses the original default learning rate. It does not include the
+desktop learning-rate slider or Stop button.
 
-Run these from the `Which wAIst` project folder:
+Games and web training results are kept in memory. Refreshing starts a new game;
+restarting the backend clears games. Browser training does not overwrite desktop
+checkpoint files. This is a local student demo; it keeps up to 32 games.
+
+## How the frontend talks to Python
+
+React calls `http://localhost:8000`:
+
+- `POST /games` generates drawings using the existing Python render functions.
+- `POST /demo` prepares a short guided session with supplied labels.
+- `POST /games/{id}/sort` records a label and returns feedback and the next item.
+- `POST /games/{id}/train` starts CNN training in a background thread.
+- `GET /games/{id}` provides progress and final predictions.
+
+Images are returned as PNG data URLs. CORS allows http://localhost:5173.
+To change the backend address, set `VITE_API_URL` in `frontend/.env.local`.
+
+The original desktop game still runs with `uv run python trash_sorter_cnn.py`.
+It saves trained weights to `backend/trash_cnn.pt`. The earlier upload API
+`POST /predict` remains available for testing saved desktop weights through API
+docs, but the frontend has no upload flow. Old four-class weights must be retrained.
+
+## Checks
 
 ```powershell
+uv run python -m unittest discover -s backend/tests
 npm run lint
 npm run build
 ```
 
-`lint` checks the source for common mistakes. `build` checks that the app can create production files in `frontend/dist/`.
-
-## Folder guide
-
-```text
-Which wAIst/
-├─ frontend/             React app
-│  ├─ public/            files served directly
-│  ├─ src/
-│  │  ├─ App.jsx         starter screen
-│  │  ├─ App.css         screen styles
-│  │  ├─ index.css       global styles
-│  │  └─ main.jsx        React entry point
-│  └─ package.json       scripts and dependencies
-├─ backend/              add later for FastAPI
-```
-
-As the frontend grows, add `src/components/` for reusable UI and `src/services/` for calls to the backend.
-
-## When you add FastAPI
-
-Keep it in a separate `backend/` folder and run it in a second terminal. The React app will make HTTP requests to the backend. During local development, you can configure a Vite proxy for `/api` requests or enable CORS in FastAPI. Put environment-specific frontend values in a `.env.local` file and use the `VITE_` prefix for values the browser needs; never put secrets there.
-
-Further reading: [Vite getting started](https://vite.dev/guide/), [React quick start](https://react.dev/learn), and [React build from scratch](https://react.dev/learn/build-a-react-app-from-scratch).
+`trash_sorter_cnn.py` contains the original drawing functions, CNN, and desktop
+game. `backend/game.py` adapts the game and training for web sessions.
+`backend/main.py` provides HTTP routes. `frontend/src/App.jsx` displays the game.

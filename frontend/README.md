@@ -1,2 +1,2 @@
-# Which wAIst frontend
+# Which wAIste frontend
 

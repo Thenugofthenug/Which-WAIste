@@ -3,7 +3,7 @@
 Trash Sorter + CNN
 ==================
 1. Play: sort 30 procedurally-drawn trash items into Recycling / Compost /
-   Landfill / Hazardous. YOUR choices become the labels of the dataset.
+   Landfill. YOUR choices become the labels of the dataset.
 2. Train: a small convolutional neural network learns from your 30 labeled
    images for 50 epochs.
      - The 30 items are split (stratified) into train / validation / test.
@@ -21,26 +21,21 @@ import queue
 import random
 import threading
 import traceback
-import tkinter as tk
-from tkinter import ttk
+from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageEnhance, ImageTk
+from PIL import Image, ImageDraw, ImageEnhance
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import matplotlib
-matplotlib.use("TkAgg")
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
-
 # ----------------------------------------------------------------------------
 # Configuration
 # ----------------------------------------------------------------------------
-CATEGORIES = ["Recycling", "Compost", "Landfill", "Hazardous"]
-CAT_COLORS = ["#2b7bd6", "#3a9d4a", "#6b6b6b", "#d64b2b"]
+CATEGORIES = ["Recycling", "Compost", "Landfill"]
+CAT_COLORS = ["#2b7bd6", "#3a9d4a", "#6b6b6b"]
+MODEL_PATH = Path(__file__).resolve().parent / "backend" / "trash_cnn.pt"
 NUM_ITEMS = 30          # items the player sorts
 EPOCHS = 50             # training epochs
 DRAW_SIZE = 128         # resolution items are drawn at (and shown to player)
@@ -196,45 +191,6 @@ def draw_wrapper(d, rng, cx, cy, s):
     d.line(P(cx, cy, s, [(-14, -4), (14, -4)]), fill=(255, 255, 255), width=max(1, int(2 * s)))
 
 
-def draw_battery(d, rng, cx, cy, s):
-    top = jitter(rng, rng.choice([(200, 120, 40), (30, 30, 30), (40, 90, 200)]), 15)
-    d.rectangle(B(cx, cy, s, -6, -42, 6, -34), fill=(170, 170, 175), outline=(60, 60, 60))
-    d.rectangle(B(cx, cy, s, -14, -34, 14, 38), fill=(35, 35, 35), outline=(20, 20, 20), width=2)
-    d.rectangle(B(cx, cy, s, -14, -34, 14, -4), fill=top, outline=(20, 20, 20), width=2)
-    d.line(P(cx, cy, s, [(-5, -20), (5, -20)]), fill=(255, 255, 255), width=2)
-    d.line(P(cx, cy, s, [(0, -25), (0, -15)]), fill=(255, 255, 255), width=2)
-
-
-def draw_light_bulb(d, rng, cx, cy, s):
-    d.ellipse(B(cx, cy, s, -24, -44, 24, 6), fill=jitter(rng, (250, 245, 190), 10),
-              outline=(150, 140, 90), width=2)
-    d.rectangle(B(cx, cy, s, -11, 0, 11, 26), fill=(175, 175, 180), outline=(90, 90, 95))
-    for y in (6, 13, 20):
-        d.line(P(cx, cy, s, [(-11, y), (11, y)]), fill=(110, 110, 115), width=2)
-    d.polygon(P(cx, cy, s, [(-7, 26), (7, 26), (0, 34)]), fill=(60, 60, 60))
-    d.line(P(cx, cy, s, [(-6, 0), (-4, -18), (4, -18), (6, 0)]), fill=(140, 110, 60), width=2)
-
-
-def draw_paint_can(d, rng, cx, cy, s):
-    paint = jitter(rng, rng.choice([(30, 120, 220), (220, 60, 50), (250, 210, 40), (60, 170, 90)]), 20)
-    d.arc(B(cx, cy, s, -22, -44, 22, -4), start=180, end=360, fill=(80, 80, 85), width=max(1, int(3 * s)))
-    d.rectangle(B(cx, cy, s, -24, -24, 24, 36), fill=(180, 182, 188), outline=(80, 80, 85), width=2)
-    d.rectangle(B(cx, cy, s, -24, -4, 24, 20), fill=(240, 240, 235))
-    d.rectangle(B(cx, cy, s, -24, -24, 24, -18), fill=paint)
-    for x in (-16, -2, 12):
-        d.rounded_rectangle(B(cx, cy, s, x, -20, x + 5, -20 + rng.randint(6, 16)), radius=2, fill=paint)
-    d.ellipse(B(cx, cy, s, -10, 0, 10, 16), fill=paint)
-
-
-def draw_phone(d, rng, cx, cy, s):
-    body = jitter(rng, rng.choice([(30, 30, 35), (200, 200, 205), (180, 150, 120)]), 10)
-    d.rounded_rectangle(B(cx, cy, s, -18, -38, 18, 38), radius=int(7 * s), fill=body,
-                        outline=(20, 20, 20), width=2)
-    d.rectangle(B(cx, cy, s, -14, -30, 14, 24), fill=jitter(rng, (40, 60, 90), 15))
-    d.line(P(cx, cy, s, [(-14, -30), (0, -4), (6, 24)]), fill=(200, 200, 210), width=1)
-    d.ellipse(B(cx, cy, s, -4, 27, 4, 35), fill=(90, 90, 95))
-
-
 # (display name, draw function, category most programs would use)
 ITEM_TYPES = [
     ("Plastic bottle", draw_plastic_bottle, 0),
@@ -249,10 +205,6 @@ ITEM_TYPES = [
     ("Chip bag", draw_chip_bag, 2),
     ("Foam cup", draw_foam_cup, 2),
     ("Candy wrapper", draw_wrapper, 2),
-    ("Battery", draw_battery, 3),
-    ("Light bulb", draw_light_bulb, 3),
-    ("Paint can", draw_paint_can, 3),
-    ("Old phone", draw_phone, 3),
 ]
 
 
@@ -345,7 +297,7 @@ def make_train_epoch(images, labels, rng):
 # Model
 # ----------------------------------------------------------------------------
 class TrashCNN(nn.Module):
-    def __init__(self, n_classes):
+    def __init__(self, n_classes=len(CATEGORIES)):
         super().__init__()
 
         def block(cin, cout):
@@ -358,6 +310,26 @@ class TrashCNN(nn.Module):
 
     def forward(self, x):
         return self.head(self.features(x))
+
+
+def load_model(path=MODEL_PATH):
+    """Load trained three-class weights on CPU; reject incompatible checkpoints."""
+    checkpoint = torch.load(path, map_location="cpu", weights_only=True)
+    if checkpoint["categories"] != CATEGORIES:
+        raise ValueError("Model categories differ; retrain the three-class CNN.")
+    model = TrashCNN()
+    model.load_state_dict(checkpoint["state_dict"])
+    model.eval()
+    return model
+
+
+@torch.inference_mode()
+def predict_image(model, image):
+    """Use the same RGB normalization and image size as training."""
+    image = image.convert("RGB").resize((IMG_SIZE, IMG_SIZE), RESAMPLE.BILINEAR)
+    probabilities = model(to_tensor(image).unsqueeze(0)).softmax(dim=1)[0]
+    index = int(probabilities.argmax())
+    return {"predicted_class": CATEGORIES[index], "confidence": float(probabilities[index])}
 
 
 @torch.no_grad()
@@ -415,7 +387,7 @@ class App:
         f.pack(fill="both", expand=True)
         tk.Label(f, text="♻ Trash Sorter", font=("Helvetica", 24, "bold")).pack()
         tk.Label(f, text="Sort each item into a bin. Your choices become the labels the CNN learns from."
-                         "  (Keys 1–4 work too.)", font=("Helvetica", 11)).pack(pady=(0, 10))
+                         "  (Keys 1–3 work too.)", font=("Helvetica", 11)).pack(pady=(0, 10))
         self.progress_lbl = tk.Label(f, font=("Helvetica", 12))
         self.progress_lbl.pack()
         self.img_lbl = tk.Label(f, bd=2, relief="groove")
@@ -442,7 +414,7 @@ class App:
         self.score_lbl.config(text=f"Score vs. common guidelines: {self.score} / {self.idx}")
 
     def on_key(self, event):
-        if self.phase == "game" and event.char in "1234" and event.char:
+        if self.phase == "game" and event.char in "123" and event.char:
             self.sort_item(int(event.char) - 1)
 
     def sort_item(self, cat):
@@ -638,6 +610,9 @@ class App:
             # Final evaluation on the held-out test set with the best checkpoint
             if best["state"] is not None:
                 model.load_state_dict(best["state"])
+                MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+                torch.save({"categories": CATEGORIES, "state_dict": model.state_dict()}, MODEL_PATH)
+                self.q.put(("log", f"Saved trained model to {MODEL_PATH}. Restart the backend to reload it."))
             tl, ta, logits = evaluate(model, self.Xt, self.yt)
             probs = F.softmax(logits, dim=1)
             per_item = {}
@@ -711,6 +686,16 @@ class App:
 
 
 def main():
+    # GUI dependencies are needed only for the standalone sorting/training game.
+    global tk, ttk, ImageTk, FigureCanvasTkAgg, Figure
+    import tkinter as tk
+    from tkinter import ttk
+    from PIL import ImageTk
+    import matplotlib
+    matplotlib.use("TkAgg")
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    from matplotlib.figure import Figure
+
     root = tk.Tk()
     App(root)
     root.mainloop()

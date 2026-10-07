@@ -1,0 +1,92 @@
+.conveyor-lab { margin: 28px 0; padding: clamp(16px, 3vw, 28px); background: var(--panel); color: var(--text); border: 1px solid #253b58; border-radius: 20px; }
+.lab-header { display: flex; justify-content: space-between; align-items: start; gap: 16px; flex-wrap: wrap; }
+.lab-eyebrow { margin: 0 0 8px; color: var(--accent); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.lab-header h2 { margin: 0; font-size: 1.4rem; }
+.lab-badge { border: 1px solid #35516f; color: #b6cbe5; padding: 6px 10px; border-radius: 20px; font-size: 0.75rem; }
+.lab-intro, .lab-caption { color: #adbed6; font-size: 0.85rem; }
+.lab-caption { margin: 12px 0 0; }
+.cnn-diagram { margin: 22px 0; padding: 16px; background: var(--inset); border: 1px solid #243751; border-radius: 14px; }
+.conveyor-lab h3 { margin: 0 0 12px; font-size: 1rem; }
+.cnn-diagram { overflow-x: auto; }
+.cnn-diagram svg { display: block; width: 100%; min-width: 650px; }
+.cnn-diagram text { fill: #e2e8f0; font-size: 11px; }
+.cnn-diagram .layer-detail { fill: #91a8c5; font-size: 10px; }
+.cnn-block { fill: #101e36; stroke: #35516f; }
+.cnn-lit { stroke: #67e8f9; }
+.signal-wire { stroke: #35516f; stroke-width: 2; fill: none; }
+.signal-active { stroke: #34d399; stroke-dasharray: 5 5; }
+.lab-running .signal-active { animation: signal-flow 1s linear infinite; }
+.conveyor-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 0.8rem; }
+.conveyor-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.conveyor-controls button { margin: 0; background: #203855; padding: 8px 12px; font-size: 0.8rem; }
+.conveyor-controls button:hover { background: #35516f; }
+.conveyor-controls select { margin-left: 6px; padding: 6px; border-radius: 6px; border: 1px solid #35516f; background: #101e36; color: var(--text); }
+.conveyor-viewport { overflow-x: auto; margin: 16px 0; }
+.conveyor-scene { display: block; width: 100%; min-width: 650px; border: 1px solid #243751; background: var(--inset); border-radius: 14px; }
+.conveyor-scene text { fill: #d4e3f5; font-size: 11px; font-weight: 600; }
+.conveyor-scene .scene-label { fill: #91a8c5; font-size: 12px; }
+.camera-beam { fill: #67e8f9; opacity: 0.025; }
+.active-beam { opacity: 0.18; }
+.lab-running .moving-treads { animation: belt-flow 0.6s linear infinite; }
+.decision-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.decision-summary { margin: 0; font-weight: 700; color: var(--accent); }
+.class-scores { display: grid; gap: 12px; }
+.score-label { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 5px; }
+.score-track { height: 7px; background: #233851; border-radius: 5px; overflow: hidden; }
+.score-track > div { height: 100%; transition: width 0.4s; }
+@keyframes belt-flow { to { transform: translateX(28px); } }
+@keyframes signal-flow { to { stroke-dashoffset: -20; } }
+@media (max-width: 620px) { .decision-layout { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) {
+  .lab-running .moving-treads, .lab-running .signal-active { animation: none; }
+  .score-track > div { transition: none; }
+}
+
+.guided-lesson { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-bottom: 24px; }
+.lesson-steps { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--inset); }
+.lesson-steps button { margin: 0; padding: 14px 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); text-align: left; font-size: 0.8rem; }
+.lesson-steps button span { display: block; margin-bottom: 6px; color: var(--accent); font-size: 0.7rem; }
+.lesson-steps button[aria-pressed='true'] { background: #17313c; border-color: var(--accent); color: var(--text); }
+.lesson-content { padding: 22px; min-height: 240px; }
+.lesson-content > p { font-size: 0.9rem; }
+.pixel-example { display: flex; flex-wrap: wrap; align-items: center; gap: 24px; }
+.pixel-example img { width: 128px; height: 128px; image-rendering: pixelated; border-radius: 6px; }
+.feature-layers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.feature-layer { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--inset); }
+.feature-layer small { display: block; font-size: 0.7rem; margin: 6px 0; color: var(--muted); }
+.feature-layer > div { display: flex; gap: 8px; }
+.feature-layer figure { margin: 0; min-width: 0; flex: 1; }
+.feature-layer img { width: 100%; aspect-ratio: 1; image-rendering: pixelated; }
+.feature-layer figcaption { font-size: 0.65rem; color: var(--muted); }
+.comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.comparison-card { padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--inset); }
+.comparison-card h4 { margin: 0 0 8px; color: var(--muted); }
+.comparison-card > strong { color: var(--accent); }
+.comparison-score { display: grid; grid-template-columns: 75px 1fr 48px; gap: 8px; align-items: center; margin-top: 12px; font-size: 0.75rem; }
+.comparison-score meter { width: 100%; accent-color: var(--accent); }
+.label-comparison { display: flex; flex-wrap: wrap; gap: 12px; }
+.label-comparison > span { padding: 14px 18px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); }
+.label-comparison strong { display: block; margin-top: 6px; color: var(--text); }
+@media (max-width: 620px) {
+  .lesson-steps, .feature-layers { grid-template-columns: 1fr 1fr; }
+  .comparison-grid { grid-template-columns: 1fr; }
+  .lesson-content { padding: 16px; }
+}
+
+.main-stage .conveyor-lab { margin: 0; padding: 20px; border: 0; border-radius: 0; }
+.conveyor-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.conveyor-stage { min-width: 0; }
+.conveyor-workspace .guided-lesson { margin: 0; }
+.main-stage .lab-intro { margin: 10px 0 18px; }
+.main-stage .cnn-diagram { margin: 0 0 16px; padding: 12px; }
+.main-stage .conveyor-viewport { margin: 12px 0; }
+@media (min-width: 1320px) {
+  .conveyor-workspace { grid-template-columns: minmax(0, 1.3fr) minmax(320px, 1fr); align-items: start; }
+  .conveyor-workspace .guided-lesson { position: sticky; top: 0; }
+  .conveyor-workspace .lesson-steps, .conveyor-workspace .feature-layers { grid-template-columns: 1fr 1fr; }
+  .conveyor-workspace .comparison-grid { grid-template-columns: 1fr; }
+  .main-stage .cnn-diagram svg, .main-stage .conveyor-scene { min-width: 480px; }
+  .main-stage .decision-layout { gap: 16px; }
+  .main-stage .lab-caption { font-size: 0.75rem; }
+  .conveyor-workspace .lesson-content { padding: 16px; }
+}
