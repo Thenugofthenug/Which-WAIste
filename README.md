@@ -46,7 +46,7 @@ routes each to the CNN's selected bin. The network schematic shows the actual
 four convolution blocks and the three class scores. Pause, Play, Step, Replay,
 and speed controls let you follow the decision. Scores are the same averaged
 test predictions used in the results table, not simulated physical sensors.
-Reduced-motion preferences start the replay paused; use Step to inspect it.
+Use Free replay and Step to inspect the animation without the timed challenge.
 All replays now start paused for guided exploration. Four lesson buttons show
 the actual 64-by-64 input and pixel normalization, real activation maps from each
 convolution block, before/after class scores, and the selected bin. Before and
@@ -54,6 +54,21 @@ after evaluation use exactly the same held-out items and augmented views.
 Each activation map is normalized to its own maximum, and maps are selected by
 mean response. They show responses, not human-readable reasons or saliency.
 The application uses a single dark navy-and-mint theme across all stages.
+The three slide buttons and Back/Next controls let students revisit unlocked
+stages without discarding their session. Slide 1 shows the original labels after
+sorting. Slide 2 is a learning workshop with a persistent filters and feature-maps
+box, an illustrative weight experiment, and the real CNN inspection after training.
+There is no quiz. The experiment does not change the Python model. Slide 3 focuses
+on a timed claw challenge: press Play and grab an item while it crosses the marked
+zone. Early or late attempts fail while the belt keeps moving. Missed items pass
+automatically and count as misses. A successful catch pauses the item so students
+can predict its bin; choosing a bin releases it and resumes the belt to show the
+CNN's decision. Catch and miss counters track the round. Claw guesses stay separate
+from training and test labels. Slow speed and Free replay are available; Step is
+only available in Free replay. Leaving slide 3 pauses its animation while
+preserving progress. Extra explanations, the glossary, graphs, feature-map notes,
+and results tables remain available. Training continues when students switch
+slides; after training, use Next to enter the claw challenge.
 On desktop the lab fills the screen: training controls and graphs share a sidebar,
 with sorting and decisions in the larger workspace. Wide screens place the guided
 lesson beside the conveyor. Panels scroll independently on shorter displays;
@@ -75,6 +90,7 @@ React calls `http://localhost:8000`:
 - `POST /games/{id}/sort` records a label and returns feedback and the next item.
 - `POST /games/{id}/train` starts CNN training in a background thread.
 - `GET /games/{id}` provides progress and final predictions.
+- `GET /games/{id}/labels` reads the labeled drawings for slide 1 review.
 
 Images are returned as PNG data URLs. CORS allows http://localhost:5173.
 To change the backend address, set `VITE_API_URL` in `frontend/.env.local`.
@@ -89,6 +105,7 @@ docs, but the frontend has no upload flow. Old four-class weights must be retrai
 ```powershell
 uv run python -m unittest discover -s backend/tests
 npm run lint
+npm run test
 npm run build
 ```
 

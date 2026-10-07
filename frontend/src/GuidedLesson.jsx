@@ -1,7 +1,9 @@
+import FiltersBox from './FiltersBox'
+
 const steps = ['Pixels become numbers', 'Layers respond to patterns', 'Compare class scores', 'Choose a bin']
 const bins = ['Recycling', 'Compost', 'Landfill']
 
-export default function GuidedLesson({ item, step, onStep }) {
+export default function GuidedLesson({ item, step, onStep, showFilters = true }) {
   const inspection = item.inspection
   return <div className="guided-lesson">
     <div className="lesson-steps" aria-label="Explore the decision steps">
@@ -21,11 +23,7 @@ export default function GuidedLesson({ item, step, onStep }) {
       {step === 1 && <>
         <p>Learned filters respond to patterns in the image. ReLU keeps positive responses;
           pooling shrinks the grids. Later layers combine earlier responses.</p>
-        {inspection && <div className="feature-layers">{inspection.layers.map((layer) => <div className="feature-layer" key={layer.name}>
-          <strong>{layer.name}</strong><small>{layer.shape[0]} channels · {layer.shape[1]} × {layer.shape[2]}</small>
-          <div>{layer.maps.map((map) => <figure key={map.channel}><img src={map.image} alt={`${layer.name}, channel ${map.channel} activation map`} />
-            <figcaption>Channel {map.channel}</figcaption></figure>)}</div>
-        </div>)}</div>}
+        {showFilters && inspection && <FiltersBox inspection={inspection} />}
         <p className="lab-caption">These are real responses from the trained CNN on the original image.
           Each map is scaled to its own maximum; brighter means a stronger response within that map.
           They don’t identify a human concept or explain the entire decision.</p>
@@ -46,7 +44,7 @@ export default function GuidedLesson({ item, step, onStep }) {
           A high model score can still be wrong; improvement isn’t guaranteed on this small dataset.</p>
       </>}
       {step === 3 && <>
-        <p>The highest score selects <strong>{item.predicted_class}</strong>. The conveyor illustrates that choice;
+        <p>The highest score selects <strong>{item.predicted_class}</strong>. The conveyor on slide 3 illustrates that choice;
           it doesn’t change the model’s prediction.</p>
         <div className="label-comparison"><span>Your label <strong>{item.your_label}</strong></span>
           <span>Model choice <strong>{item.predicted_class}</strong></span>

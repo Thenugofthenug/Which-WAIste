@@ -89,6 +89,12 @@ class ApiTests(unittest.TestCase):
                 self.assertEqual(games[game_id].items[index]['label'], category)
             self.assertEqual(response.json()['score'], 29)
             self.assertIsNone(response.json()['item'])
+            reviewed = self.client.get(f'/games/{game_id}/labels')
+            self.assertEqual(reviewed.status_code, 200)
+            self.assertEqual(len(reviewed.json()['items']), 30)
+            self.assertEqual(reviewed.json()['items'][0]['label'], CATEGORIES[games[game_id].items[0]['label']])
+            self.assertTrue(reviewed.json()['items'][0]['image'].startswith('data:image/png;base64,'))
+            self.assertEqual(games[game_id].index, 30)
             self.assertEqual(self.client.post(f'/games/{game_id}/sort', json={'index': 29, 'category': 0}).status_code, 409)
             with patch('backend.main.threading.Thread') as worker:
                 started = self.client.post(f'/games/{game_id}/train')

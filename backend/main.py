@@ -10,6 +10,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
 from backend.game import Game
+from backend.inspection import image_url
 
 from trash_sorter_cnn import CATEGORIES, EPOCHS, MODEL_PATH, load_model, predict_image
 
@@ -86,6 +87,15 @@ def game_status(game_id: str):
     game = get_game(game_id)
     with game.lock:
         return {"game_id": game_id, **game.view()}
+
+
+@app.get("/games/{game_id}/labels")
+def review_labels(game_id: str):
+    game = get_game(game_id)
+    with game.lock:
+        return {"items": [{"index": index, "name": item["name"], "image": image_url(item["image"]),
+                           "label": CATEGORIES[item["label"]]}
+                          for index, item in enumerate(game.items) if item["label"] is not None]}
 
 
 class SortChoice(BaseModel):

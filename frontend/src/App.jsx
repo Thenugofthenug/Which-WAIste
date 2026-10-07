@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import './App.css'
 import TrainingGraphs from './TrainingGraphs'
 import ConveyorReplay from './ConveyorReplay'
+import LearningWorkshop from './LearningWorkshop'
+import DatasetReview from './DatasetReview'
+import './LearningActivities.css'
 
 const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -19,6 +22,7 @@ function App() {
   const [feedback, setFeedback] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [selectedStage, setSelectedStage] = useState(null)
 
   async function act(path, body, reset = false) {
     setLoading(true)
@@ -26,6 +30,9 @@ function App() {
     try {
       const data = await request(path, body)
       setGame(data)
+      if (reset) setSelectedStage(data.item ? 0 : 1)
+      else if (path.endsWith('/train')) setSelectedStage(1)
+      else if (path.endsWith('/sort') && !data.item) setSelectedStage(1)
       if (reset) setFeedback(null)
       else if (data.feedback) setFeedback(data.feedback)
     } catch (err) {
@@ -47,7 +54,8 @@ function App() {
 
   const gameId = game?.game_id
   const training = game?.training
-  const stage = game?.item ? 0 : training?.status === 'done' ? 2 : 1
+  const unlockedStage = !game || game.item ? 0 : training?.status === 'done' ? 2 : 1
+  const stage = Math.min(selectedStage ?? unlockedStage, unlockedStage)
   useEffect(() => {
     if (training?.status !== 'training') return
     let active = true
@@ -67,14 +75,14 @@ function App() {
   }, [gameId, training?.status])
 
   useEffect(() => {
-    if (!game?.item || loading) return
+    if (!game?.item || loading || stage !== 0) return
     function onKey(event) {
       if (event.repeat || !['1', '2', '3'].includes(event.key)) return
       document.getElementById(`bin-${Number(event.key) - 1}`)?.click()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [game?.item, loading])
+  }, [game?.item, loading, stage])
 
   return (
     <main className="page">
@@ -83,14 +91,20 @@ function App() {
         <div><p className="eyebrow">Neural network learning lab</p>
         <h1>Which wAIste</h1>
         <p className="app-intro">Teach a sorter. Then look inside its decisions.</p></div>
-        <ol className="stage-nav">{['Label the examples', 'Watch it learn', 'Explore a decision'].map((label, index) =>
-          <li key={label} className={stage === index ? 'stage-current' : stage > index ? 'stage-complete' : ''}>
-            <span>0{index + 1}</span>{label}</li>)}</ol>
+        <ol className="stage-nav">{['Label the examples', 'Learning workshop', 'Claw challenge'].map((label, index) =>
+          <li key={label} className={stage === index ? 'stage-current' : unlockedStage > index ? 'stage-complete' : ''}>
+            <button aria-current={stage === index ? 'step' : undefined} disabled={index > unlockedStage}
+              title={index > unlockedStage ? index === 1 ? 'Sort all examples to unlock the workshop' : 'Finish training to unlock the claw challenge' : `Go to slide ${index + 1}`}
+              onClick={() => setSelectedStage(index)}><span>0{index + 1}</span>{label}</button></li>)}</ol>
         <button className="secondary-button" disabled={loading || training?.status === 'training'}
           onClick={() => act('/games', {}, true)}>Start new game</button>
         </header>
         <div className="workspace">
         <aside className="lab-sidebar" aria-label="Training and session controls">
+        <div className="slide-navigation"><button className="secondary-button" disabled={stage === 0} onClick={() => setSelectedStage(stage - 1)}>← Back</button>
+          <span>Slide {stage + 1} / 3</span><button className="secondary-button" disabled={stage >= unlockedStage} onClick={() => setSelectedStage(stage + 1)}>Next →</button></div>
+        <details className="navigation-help"><summary>Can I go back?</summary><p>Yes. Completed slides stay unlocked, and your labels, experiment settings, lesson steps, and claw progress stay in this session.
+          Training continues when you switch slides. A new game or browser refresh starts over.</p></details>
         <div className="demo-launch"><div><strong>Want a quick walkthrough?</strong>
           <p>Try a 3-epoch demo with prepared labels, or sort all 30 items yourself.</p></div>
           <button className="secondary-button" disabled={loading || training?.status === 'training'}
@@ -141,6 +155,7 @@ function App() {
         </div>
         </aside>
         <section className="main-stage" aria-label="Game and decision workspace">
+          <div hidden={stage !== 0} className="stage-page">
           {game?.item ? <div className="sorting-workspace">
             <div><p className="eyebrow">Build your dataset · Item {game.index + 1} of {game.total}</p>
               <div className="sorting-display"><img className="trash-image" src={game.item.image} alt={game.item.name} />
@@ -152,17 +167,11 @@ function App() {
                   disabled={loading} onClick={() => act(`/games/${game.game_id}/sort`, { index: game.index, category: index })}>
                   {index + 1}. {category}</button>))}</div>
               <p className="hint">Drawings come from the original Python sorting game.</p>
-            </div></div> : training?.status === 'done' ? <ConveyorReplay predictions={training.predictions} /> :
-            <div className="training-stage"><p className="eyebrow">Stage 2 · Watch it learn</p>
-              <h2>{training?.status === 'training' ? 'The network is learning your labels' : 'Your examples are ready'}</h2>
-              <p>{training?.status === 'training' ? 'Training adjusts the weights. Follow the loss and accuracy curves in the panel beside you.' : 'Start Training in the control panel to teach the CNN.'}</p>
-              <div className="training-roadmap">{['Split the labeled examples', 'Learn patterns from images', 'Check held-out predictions'].map((title, index) =>
-                <div key={title}><span>0{index + 1}</span><h3>{title}</h3><p>{[
-                  'Training teaches the model. Validation selects its best checkpoint. Test items stay out of training.',
-                  'Each epoch adjusts the CNN weights to reduce prediction error against the supplied labels.',
-                  'After training, compare before and after scores and inspect the real layer responses.',
-                ][index]}</p></div>)}</div>
-            </div>}
+            </div></div> : game && <DatasetReview key={gameId} gameId={gameId} baseUrl={baseUrl} active={stage === 0} demo={game.demo} />}
+          </div>
+          <div hidden={stage !== 1} className="stage-page"><LearningWorkshop key={gameId} training={training} demo={game?.demo} /></div>
+          <div hidden={stage !== 2} className="stage-page">{training?.status === 'done' &&
+            <ConveyorReplay key={gameId} predictions={training.predictions} active={stage === 2} />}</div>
         </section>
         </div>
       </section>
