@@ -39,8 +39,8 @@ from matplotlib.figure import Figure
 # ----------------------------------------------------------------------------
 # Configuration
 # ----------------------------------------------------------------------------
-CATEGORIES = ["Recycling", "Compost", "Landfill", "Hazardous"]
-CAT_COLORS = ["#2b7bd6", "#3a9d4a", "#6b6b6b", "#d64b2b"]
+CATEGORIES = ["Recycling", "Compost", "Landfill"]
+CAT_COLORS = ["#2b7bd6", "#3a9d4a", "#6b6b6b"]
 NUM_ITEMS = 30          # items the player sorts
 EPOCHS = 50             # training epochs
 DRAW_SIZE = 128         # resolution items are drawn at (and shown to player)
@@ -196,43 +196,43 @@ def draw_wrapper(d, rng, cx, cy, s):
     d.line(P(cx, cy, s, [(-14, -4), (14, -4)]), fill=(255, 255, 255), width=max(1, int(2 * s)))
 
 
-def draw_battery(d, rng, cx, cy, s):
-    top = jitter(rng, rng.choice([(200, 120, 40), (30, 30, 30), (40, 90, 200)]), 15)
-    d.rectangle(B(cx, cy, s, -6, -42, 6, -34), fill=(170, 170, 175), outline=(60, 60, 60))
-    d.rectangle(B(cx, cy, s, -14, -34, 14, 38), fill=(35, 35, 35), outline=(20, 20, 20), width=2)
-    d.rectangle(B(cx, cy, s, -14, -34, 14, -4), fill=top, outline=(20, 20, 20), width=2)
-    d.line(P(cx, cy, s, [(-5, -20), (5, -20)]), fill=(255, 255, 255), width=2)
-    d.line(P(cx, cy, s, [(0, -25), (0, -15)]), fill=(255, 255, 255), width=2)
+# def draw_battery(d, rng, cx, cy, s):
+#     top = jitter(rng, rng.choice([(200, 120, 40), (30, 30, 30), (40, 90, 200)]), 15)
+#     d.rectangle(B(cx, cy, s, -6, -42, 6, -34), fill=(170, 170, 175), outline=(60, 60, 60))
+#     d.rectangle(B(cx, cy, s, -14, -34, 14, 38), fill=(35, 35, 35), outline=(20, 20, 20), width=2)
+#     d.rectangle(B(cx, cy, s, -14, -34, 14, -4), fill=top, outline=(20, 20, 20), width=2)
+#     d.line(P(cx, cy, s, [(-5, -20), (5, -20)]), fill=(255, 255, 255), width=2)
+#     d.line(P(cx, cy, s, [(0, -25), (0, -15)]), fill=(255, 255, 255), width=2)
 
 
-def draw_light_bulb(d, rng, cx, cy, s):
-    d.ellipse(B(cx, cy, s, -24, -44, 24, 6), fill=jitter(rng, (250, 245, 190), 10),
-              outline=(150, 140, 90), width=2)
-    d.rectangle(B(cx, cy, s, -11, 0, 11, 26), fill=(175, 175, 180), outline=(90, 90, 95))
-    for y in (6, 13, 20):
-        d.line(P(cx, cy, s, [(-11, y), (11, y)]), fill=(110, 110, 115), width=2)
-    d.polygon(P(cx, cy, s, [(-7, 26), (7, 26), (0, 34)]), fill=(60, 60, 60))
-    d.line(P(cx, cy, s, [(-6, 0), (-4, -18), (4, -18), (6, 0)]), fill=(140, 110, 60), width=2)
+# def draw_light_bulb(d, rng, cx, cy, s):
+#     d.ellipse(B(cx, cy, s, -24, -44, 24, 6), fill=jitter(rng, (250, 245, 190), 10),
+#               outline=(150, 140, 90), width=2)
+#     d.rectangle(B(cx, cy, s, -11, 0, 11, 26), fill=(175, 175, 180), outline=(90, 90, 95))
+#     for y in (6, 13, 20):
+#         d.line(P(cx, cy, s, [(-11, y), (11, y)]), fill=(110, 110, 115), width=2)
+#     d.polygon(P(cx, cy, s, [(-7, 26), (7, 26), (0, 34)]), fill=(60, 60, 60))
+#     d.line(P(cx, cy, s, [(-6, 0), (-4, -18), (4, -18), (6, 0)]), fill=(140, 110, 60), width=2)
 
 
-def draw_paint_can(d, rng, cx, cy, s):
-    paint = jitter(rng, rng.choice([(30, 120, 220), (220, 60, 50), (250, 210, 40), (60, 170, 90)]), 20)
-    d.arc(B(cx, cy, s, -22, -44, 22, -4), start=180, end=360, fill=(80, 80, 85), width=max(1, int(3 * s)))
-    d.rectangle(B(cx, cy, s, -24, -24, 24, 36), fill=(180, 182, 188), outline=(80, 80, 85), width=2)
-    d.rectangle(B(cx, cy, s, -24, -4, 24, 20), fill=(240, 240, 235))
-    d.rectangle(B(cx, cy, s, -24, -24, 24, -18), fill=paint)
-    for x in (-16, -2, 12):
-        d.rounded_rectangle(B(cx, cy, s, x, -20, x + 5, -20 + rng.randint(6, 16)), radius=2, fill=paint)
-    d.ellipse(B(cx, cy, s, -10, 0, 10, 16), fill=paint)
+# def draw_paint_can(d, rng, cx, cy, s):
+#     paint = jitter(rng, rng.choice([(30, 120, 220), (220, 60, 50), (250, 210, 40), (60, 170, 90)]), 20)
+#     d.arc(B(cx, cy, s, -22, -44, 22, -4), start=180, end=360, fill=(80, 80, 85), width=max(1, int(3 * s)))
+#     d.rectangle(B(cx, cy, s, -24, -24, 24, 36), fill=(180, 182, 188), outline=(80, 80, 85), width=2)
+#     d.rectangle(B(cx, cy, s, -24, -4, 24, 20), fill=(240, 240, 235))
+#     d.rectangle(B(cx, cy, s, -24, -24, 24, -18), fill=paint)
+#     for x in (-16, -2, 12):
+#         d.rounded_rectangle(B(cx, cy, s, x, -20, x + 5, -20 + rng.randint(6, 16)), radius=2, fill=paint)
+#     d.ellipse(B(cx, cy, s, -10, 0, 10, 16), fill=paint)
 
 
-def draw_phone(d, rng, cx, cy, s):
-    body = jitter(rng, rng.choice([(30, 30, 35), (200, 200, 205), (180, 150, 120)]), 10)
-    d.rounded_rectangle(B(cx, cy, s, -18, -38, 18, 38), radius=int(7 * s), fill=body,
-                        outline=(20, 20, 20), width=2)
-    d.rectangle(B(cx, cy, s, -14, -30, 14, 24), fill=jitter(rng, (40, 60, 90), 15))
-    d.line(P(cx, cy, s, [(-14, -30), (0, -4), (6, 24)]), fill=(200, 200, 210), width=1)
-    d.ellipse(B(cx, cy, s, -4, 27, 4, 35), fill=(90, 90, 95))
+# def draw_phone(d, rng, cx, cy, s):
+#     body = jitter(rng, rng.choice([(30, 30, 35), (200, 200, 205), (180, 150, 120)]), 10)
+#     d.rounded_rectangle(B(cx, cy, s, -18, -38, 18, 38), radius=int(7 * s), fill=body,
+#                         outline=(20, 20, 20), width=2)
+#     d.rectangle(B(cx, cy, s, -14, -30, 14, 24), fill=jitter(rng, (40, 60, 90), 15))
+#     d.line(P(cx, cy, s, [(-14, -30), (0, -4), (6, 24)]), fill=(200, 200, 210), width=1)
+#     d.ellipse(B(cx, cy, s, -4, 27, 4, 35), fill=(90, 90, 95))
 
 
 # (display name, draw function, category most programs would use)
@@ -249,10 +249,10 @@ ITEM_TYPES = [
     ("Chip bag", draw_chip_bag, 2),
     ("Foam cup", draw_foam_cup, 2),
     ("Candy wrapper", draw_wrapper, 2),
-    ("Battery", draw_battery, 3),
-    ("Light bulb", draw_light_bulb, 3),
-    ("Paint can", draw_paint_can, 3),
-    ("Old phone", draw_phone, 3),
+    # ("Battery", draw_battery, 3),
+    # ("Light bulb", draw_light_bulb, 3),
+    # ("Paint can", draw_paint_can, 3),
+    # ("Old phone", draw_phone, 3),
 ]
 
 
