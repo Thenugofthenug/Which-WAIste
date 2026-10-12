@@ -9,9 +9,10 @@ import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
-from config import (ACCENT, BG, CATEGORIES, EPOCHS, FG, LR_LOG_RANGE, MUTED, NUM_ITEMS, PANEL, PICO,
+from config import (ACCENT, BG, CATEGORIES, EPOCHS, FG, LR_LOG_RANGE, MUTED, PANEL, PICO,
                     SHOW_PER_BLOCK)
 from model import probe_model, train_model
+from learning_help import add_tooltip
 from network_view import NetworkView, mpl_size
 from widgets import PixelProgress, RetroFrame
 
@@ -109,6 +110,10 @@ class TrainTab(RetroFrame):
         sb.pack(side="right", fill="y")
         self.log_txt.pack(side="left", fill="both", expand=True)
         self.log("> PRESS START TRAINING TO TEACH THE NETWORK YOUR SORTING RULES.")
+        add_tooltip(self.lr_lbl, "Learning rate controls the size of weight updates. Too large can be unstable; too small may learn slowly.", self.fonts)
+        add_tooltip(self.epoch_lbl, "An epoch is one pass through the training examples. Validation examples do not update weights.", self.fonts)
+        add_tooltip(self.status_lbl, "Test accuracy measures matches to your labels, not your game points or guaranteed correct recycling rules.", self.fonts)
+        add_tooltip(self.probe_lbl, "A probe is the item shown in the network diagram. Browse items to see how their responses differ.", self.fonts)
 
     # ---------------------------------------------------------------- display
     def log(self, msg):
@@ -150,7 +155,7 @@ class TrainTab(RetroFrame):
         return idx, self.items[idx].image
 
     def change_probe(self, step):
-        self.probe_idx = (self.probe_idx + step) % NUM_ITEMS
+        self.probe_idx = (self.probe_idx + step) % len(self.items)
         img = self.items[self.probe_idx].image
         if self.training:
             self.probe_lbl.config(text=self.probe_note() + " - UPDATES NEXT EPOCH")
@@ -229,6 +234,10 @@ class TrainTab(RetroFrame):
         else:
             self.log("\nNO FULL EPOCH COMPLETED - TESTING THE UNTRAINED MODEL.")
         self.log(f"TEST LOSS {d['test_loss']:.3f}   ACCURACY OVER ALL VIEWS {d['test_acc']:.0%}")
+        delta = (d['test_acc'] - d['before_test_acc']) * 100
+        self.log(f"DID OUR ROBOT IMPROVE? BEFORE {d['before_test_acc']:.0%} -> AFTER {d['test_acc']:.0%} "
+                 f"({delta:+.1f} PERCENTAGE POINTS), ON THE SAME HELD-OUT VIEWS.")
+        self.log("THESE SCORES MEASURE MATCHES TO YOUR LABELS. IMPROVEMENT IS NOT GUARANTEED.")
         correct = 0
         for i in self.lab.test_idx:
             p = d["item_probs"][i]
@@ -241,7 +250,8 @@ class TrainTab(RetroFrame):
         acc = correct / len(self.lab.test_idx)
         self.log(f"TEST ITEMS CORRECT: {correct}/{len(self.lab.test_idx)} = {acc:.0%}")
         self.log("> OPEN '2 - TRY NEW ITEMS' TO FEED THE NETWORK NEW PICTURES.")
-        self.finish_training(f"{'STOPPED EARLY' if d['stopped'] else 'DONE!'} TEST ACCURACY: {acc:.0%}")
+        self.finish_training(f"{'STOPPED EARLY' if d['stopped'] else 'DONE!'} TEST VIEWS: "
+                             f"{d['before_test_acc']:.0%} -> {d['test_acc']:.0%} ({delta:+.1f} pp)")
         self.lab.on_trained(d["model"])
         self.change_probe(0)
 

@@ -115,6 +115,7 @@ def train_model(train_imgs, train_labels, val_set, test_set, get_lr, get_probe, 
     opt = torch.optim.Adam(model.parameters(), lr=last_lr, weight_decay=1e-4)
     best = {"loss": float("inf"), "epoch": 0, "state": None}
     stopped = False
+    _, before_test_acc, _ = evaluate(model, Xt, yt)
 
     def probe_payload():
         idx, img = get_probe()
@@ -168,5 +169,5 @@ def train_model(train_imgs, train_labels, val_set, test_set, get_lr, get_probe, 
         per_item.setdefault(owner, []).append(p)
     item_probs = {o: torch.stack(ps).mean(0).tolist() for o, ps in per_item.items()}
     model.eval()
-    emit("done", {"test_loss": tl, "test_acc": ta, "best_epoch": best["epoch"],
+    emit("done", {"test_loss": tl, "test_acc": ta, "before_test_acc": before_test_acc, "best_epoch": best["epoch"],
                   "item_probs": item_probs, "stopped": stopped, "model": model})
