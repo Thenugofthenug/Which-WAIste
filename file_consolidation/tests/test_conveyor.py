@@ -104,9 +104,9 @@ class ConveyorTests(unittest.TestCase):
         self.game._spawn()
         item = self.game.belt[0]
         start = item.y
-        self.game.speed.set('FAST')
+        self.game._set_speed('HIGH')
         self.game._tick()
-        self.assertAlmostEqual(item.y - start, SPEEDS['FAST'])
+        self.assertAlmostEqual(item.y - start, SPEEDS['HIGH'])
         self.game._miss(item)
         self.assertEqual(self.game.c.type(item.image_id), 'image')
         self.assertEqual(len(self.game.c.find_withtag('lava-spark')), 8)
@@ -115,6 +115,13 @@ class ConveyorTests(unittest.TestCase):
         self.assertIsNone(self.game.c.type(item.image_id))
         self.assertEqual(len(self.game.c.find_withtag('lava-spark')), 0)
         self.assertEqual(self.game.missed, 1)
+
+    def test_speed_buttons_select_low_medium_and_high(self):
+        self.assertEqual(set(self.game.speed_buttons), {"LOW", "MEDIUM", "HIGH"})
+        self.assertEqual(self.game.speed.get(), "MEDIUM")
+        for level in ("LOW", "MEDIUM", "HIGH"):
+            self.game.speed_buttons[level]._command()
+            self.assertEqual(self.game.speed.get(), level)
 
     def test_guide_pauses_belt_and_resumes_without_changing_labels(self):
         self.game._spawn()
@@ -155,6 +162,11 @@ class ConveyorTests(unittest.TestCase):
         self.assertEqual((self.game.score, self.game.best_streak), (300, 30))
         self.game._show_summary()
         self.assertEqual(self.game.c.itemcget(self.game.fb_text, 'text'), 'PERFECT SORTING!')
+        self.assertEqual(self.game.c.coords(self.game.summary_window), [640.0, 422.0])
+        buttons = self.game.summary_controls.winfo_children()
+        self.assertEqual([button.cget("text") for button in buttons],
+                         ["TEACH THE ROBOT >", "PLAY AGAIN"])
+        self.assertTrue(all(button.pack_info()["side"] == "top" for button in buttons))
 
     def test_partial_round_lab_uses_only_labeled_items(self):
         for i, item in enumerate(self.app.items):

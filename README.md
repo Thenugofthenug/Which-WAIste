@@ -11,8 +11,9 @@ repository root, run it with the existing Python environment:
 ```
 
 The belt keeps moving, with a default speed about 60% faster than the first experiment.
-Choose Slow, Normal or Fast before or during the round. Missed items shrink into
-an animated blocky lava pit with pixel sparks. The lava is only a game effect;
+Choose Slow, Medium or Fast using the buttons below the remaining-items count.
+Missed items shrink into an animated blocky lava pit with pixel sparks. The lava
+is only a game effect;
 misses still receive no label and score zero.
 
 Choose **Train** on the home screen for sorting feedback and scores, or **Trick**
@@ -27,7 +28,8 @@ In Train mode, correct sorts earn 10 points; wrong sorts and missed items
 earn zero and reset the streak. Drop each item into a bin before its belt slot
 passes the exit, even while dragging it. Sorting all 30 correctly earns a perfect
 sorting round. The end screen shows points, correct/wrong sorts, misses, and the
-best streak, with buttons to replay or teach the robot.
+best streak, with replay and robot-training buttons centered above the conveyor.
+The learning tips/field guide button is in the top bar beside Restart.
 
 Only items students actually label enter the learning dataset; misses are excluded.
 Incorrect choices still supply the student's label, demonstrating why label
@@ -41,7 +43,7 @@ Use **? Learning Tips** during sorting or **? Robot Field Guide** in the lab for
 optional explanations of labels, pixels, filters/feature maps, weights, epochs,
 loss, learning rate, fair testing, overfitting, accuracy and confidence. The belt
 pauses while its guide is open and resumes when it closes; lab training continues.
-Hover or focus the speed/help controls and the lab learning-rate, epoch, status
+Hover or focus the help control and the lab learning-rate, epoch, status
 and probe labels for shorter contextual tips. No quiz is required.
 
 Run the desktop interaction and training checks with:

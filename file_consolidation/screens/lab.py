@@ -20,9 +20,11 @@ class LabScreen(RetroFrame):
         self.guide = None
         toolbar = tk.Frame(self, bg=self.cget("bg"))
         toolbar.pack(fill="x", padx=10, pady=(6, 0))
-        self.button(toolbar, "RESTART", app.home, 10, bg=PICO['blue']).pack(side="right", padx=(8, 0))
-        help_btn = self.button(toolbar, "? ROBOT FIELD GUIDE", self.open_guide, 10, bg=PICO['blue'])
-        help_btn.pack(side="right")
+        top_actions = tk.Frame(toolbar, bg=self.cget("bg"))
+        top_actions.pack(side="right")
+        self.button(top_actions, "RESTART", app.home, 10, bg=PICO['blue']).pack(side="left", padx=(0, 8))
+        help_btn = self.button(top_actions, "? ROBOT FIELD GUIDE", self.open_guide, 10, bg=PICO['blue'])
+        help_btn.pack(side="left")
         add_tooltip(help_btn, "Review pixels, filters, weights, training and model scores. You can read while training continues.", self.fonts)
 
         labels = [it.label for it in self.items]

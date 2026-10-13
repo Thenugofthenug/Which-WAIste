@@ -30,7 +30,7 @@ BIN_CENTERS = [280, 640, 1000]
 # ---- timing -----------------------------------------------------------------
 FRAME_MS = 30                          # ~33 frames per second
 SPEED = 3.6                            # faster default, pixels per frame
-SPEEDS = {"SLOW": 2.2, "NORMAL": SPEED, "FAST": 5.0}
+SPEEDS = {"SLOW": 2.2, "MEDIUM": SPEED, "FAST": 5.0}
 
 
 def tint(hex_col, f):
@@ -70,11 +70,16 @@ class GameScreen(RetroFrame):
         self._tick_job = None
         self.paused = False
         self.guide = None
-        self.speed = tk.StringVar(value="NORMAL")
+        self.speed = tk.StringVar(value="MEDIUM")
 
         hud = tk.Frame(self, bg=PANEL, highlightthickness=3, highlightbackground=FG)
         hud.pack(fill="x", padx=12, pady=(12, 6))
-        self.button(hud, "RESTART", app.home, 10, bg=PICO["blue"]).pack(side="right", padx=10)
+        top_actions = tk.Frame(hud, bg=PANEL)
+        top_actions.pack(side="right", padx=10)
+        self.button(top_actions, "RESTART", app.home, 10, bg=PICO["blue"]).pack(side="left", padx=(0, 8))
+        help_btn = self.button(top_actions, "? LEARNING TIPS", self.open_guide, 10, bg=PICO["blue"])
+        help_btn.pack(side="left")
+        add_tooltip(help_btn, "Explore labels, pixels, filters, weights and fair testing. The belt pauses while the guide is open.", self.fonts)
         self.count_lbl = self.label(hud, "", 11, padx=16, pady=8)
         self.count_lbl.pack(side="left")
         self.label(hud, "TRASH SORTER", 14, fg=PICO["green"], padx=16).pack(side="right")
@@ -82,18 +87,6 @@ class GameScreen(RetroFrame):
                         if self.trick_mode else
                         "SORT BEFORE ITEMS SLIP PAST! +10 FOR A CORRECT BIN. WRONG OR MISSED: +0. YOUR LABELS TEACH THE ROBOT.")
         self.label(self, instructions, 11, fg=MUTED).pack(pady=(0, 6))
-        controls = tk.Frame(self, bg=self.cget('bg'))
-        controls.pack(fill='x', padx=16, pady=(0, 6))
-        self.label(controls, "BELT SPEED", 10, fg=ACCENT).pack(side='left', padx=(0, 10))
-        speed_menu = tk.OptionMenu(controls, self.speed, *SPEEDS)
-        speed_menu.configure(bg=PANEL, fg=FG, activebackground=PANEL, activeforeground=ACCENT,
-                             font=self.fonts(10), highlightthickness=0)
-        speed_menu['menu'].configure(bg=PANEL, fg=FG, font=self.fonts(10))
-        speed_menu.pack(side='left')
-        add_tooltip(speed_menu, "Normal is faster than before. Choose Slow for more time or Fast for a challenge.", self.fonts)
-        help_btn = self.button(controls, "? LEARNING TIPS", self.open_guide, 10, bg=PICO['blue'])
-        help_btn.pack(side='right')
-        add_tooltip(help_btn, "Explore labels, pixels, filters, weights and fair testing. The belt pauses while the guide is open.", self.fonts)
 
         self.c = tk.Canvas(self, width=CANVAS_W, height=CANVAS_H, bg=PICO["dark_blue"], highlightthickness=0)
         self.c.pack()
@@ -156,6 +149,17 @@ class GameScreen(RetroFrame):
         self.fb_text = self.c.create_text(265, 170, text="", fill=FG, font=self.fonts(22), width=440)
         self.fb_sub = self.c.create_text(265, 250, text="", fill=MUTED, font=self.fonts(10), width=440)
         self.truck_text = self.c.create_text(1015, 170, text="", fill=FG, font=self.fonts(12), width=420)
+        speed_panel = tk.Frame(self.c, bg=PANEL, highlightthickness=2, highlightbackground=FG)
+        self.label(speed_panel, "BELT SPEED", 10, fg=ACCENT, bg=PANEL).pack(pady=(6, 2))
+        speed_buttons = tk.Frame(speed_panel, bg=PANEL)
+        speed_buttons.pack(padx=8, pady=(0, 6))
+        self.speed_buttons = {}
+        for level in SPEEDS:
+            button = self.button(speed_buttons, level, lambda value=level: self._set_speed(value),
+                                 9, bg=PICO["green"] if level == self.speed.get() else PICO["blue"])
+            button.pack(side="left", padx=3)
+            self.speed_buttons[level] = button
+        self.c.create_window(1015, 280, window=speed_panel)
         self._draw_bin_counts()
 
     def _draw_bin_counts(self):
@@ -214,6 +218,11 @@ class GameScreen(RetroFrame):
         left = len(self.items) - self.next_spawn
         self.c.itemconfig(self.truck_text, text=f"STILL ON THE TRUCK:\n{left} ITEM{'S' if left != 1 else ''}"
                           if left else "LAST ITEMS ON THE BELT!")
+
+    def _set_speed(self, level):
+        self.speed.set(level)
+        for button_level, button in self.speed_buttons.items():
+            button.set_color(PICO["green"] if button_level == level else PICO["blue"])
 
     def _move_rollers(self):
         for i, line in enumerate(self.rollers):
@@ -417,8 +426,16 @@ class GameScreen(RetroFrame):
             self.c.itemconfig(self.fb_sub, text=f"{self.app.game_summary}\n\n"
                                                 "DID OUR ROBOT IMPROVE? TRAIN IT TO FIND OUT.\n"
                                                 "GAME POINTS ARE NOT MODEL ACCURACY.")
-        self.button(self, "TEACH THE ROBOT >", self.app.show_lab, 11, bg=PICO["green"]).place(x=840, y=380)
-        self.button(self, "PLAY AGAIN", self.app.new_game, 11, bg=MUTED).place(x=840, y=440)
+        if hasattr(self, "summary_window"):
+            self.c.delete(self.summary_window)
+            self.summary_controls.destroy()
+        self.summary_controls = tk.Frame(self.c, bg=PICO["dark_blue"])
+        self.button(self.summary_controls, "TEACH THE ROBOT >", self.app.show_lab,
+                    11, bg=PICO["green"]).pack(pady=4)
+        self.button(self.summary_controls, "PLAY AGAIN", self.app.new_game,
+                    11, bg=MUTED).pack(pady=4)
+        self.summary_window = self.c.create_window(CANVAS_W / 2, BELT_END - 48,
+                                                   window=self.summary_controls)
 
     def _drop_into_bin(self, b, cat, steps=7):
         """Slide the item into the bin opening, flash the bin, then remove the item."""
