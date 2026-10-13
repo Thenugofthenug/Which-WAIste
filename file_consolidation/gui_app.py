@@ -31,6 +31,7 @@ class App:
         self.current_lr = DEFAULT_LR         # survives across games
         self.items = []
         self.screen = None
+        self.trick_mode = False
 
         self.show_title()
         self.root.after(100, self.poll_queue)
@@ -47,7 +48,18 @@ class App:
     def show_title(self):
         self._switch(TitleScreen)
 
-    def new_game(self):
+    def home(self):
+        self.stop_event.set()
+        self.stop_event = threading.Event()
+        self.current_lr = DEFAULT_LR
+        self.items = []
+        self.trick_mode = False
+        self.game_summary = ""
+        self.show_title()
+
+    def new_game(self, trick_mode=None):
+        if trick_mode is not None:
+            self.trick_mode = trick_mode
         self.items = make_game_items(NUM_ITEMS)
         self._switch(GameScreen)
 

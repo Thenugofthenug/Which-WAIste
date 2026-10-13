@@ -11,7 +11,9 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import torch
+from config import DEFAULT_LR
 from data import build_eval_set, stratified_split
+from gui_app import App
 from items import make_game_items
 from model import train_model
 from screens.game import GameScreen, SPEED, SPEEDS, STOP_Y
@@ -43,6 +45,44 @@ class ConveyorTests(unittest.TestCase):
         self.game._sort(third, wrong)
         self.assertEqual((self.game.score, self.game.streak, self.game.best_streak), (20, 0, 2))
         self.assertEqual(self.app.items[third.index].label, wrong)
+
+    def test_trick_mode_hides_sorting_correctness(self):
+        self.game.trick_mode = True
+        self.game._spawn()
+        first = self.game.belt[0]
+        wrong = (self.app.items[first.index].expected + 1) % 3
+        self.game._sort(first, wrong)
+        wrong_feedback = (self.game.c.itemcget(self.game.fb_text, "text"),
+                          self.game.c.itemcget(self.game.fb_sub, "text"))
+        self.assertEqual(wrong_feedback, (
+            "ITEM SORTED", "YOUR LABEL WAS SAVED AS A ROBOT PRACTICE EXAMPLE."))
+        self.assertNotIn("RIGHT", self.game.count_lbl.cget("text"))
+        self.assertNotIn("SCORE", self.game.count_lbl.cget("text"))
+
+        self.game._spawn()
+        second = self.game.belt[0]
+        self.game._sort(second, self.app.items[second.index].expected)
+        correct_feedback = (self.game.c.itemcget(self.game.fb_text, "text"),
+                            self.game.c.itemcget(self.game.fb_sub, "text"))
+        self.assertEqual(correct_feedback, wrong_feedback)
+
+        self.app.trick_mode = True
+        self.app.game_summary = "SCORE 10 | RIGHT 1 | WRONG 0"
+        lab = LabScreen(self.root, self.app)
+        summaries = [child.cget("text") for child in lab.winfo_children()
+                     if isinstance(child, tk.Label)]
+        self.assertIn("TRICK MODE: SORTING FEEDBACK HIDDEN.", summaries)
+        self.assertNotIn(self.app.game_summary, summaries)
+        lab.destroy()
+
+    def test_bin_count_table_updates_for_each_selected_category(self):
+        self.assertEqual([self.game.c.itemcget(label, "text")
+                          for label in self.game.bin_count_lbls], ["0", "0", "0"])
+        for category in (0, 1, 1, 2):
+            self.game._spawn()
+            self.game._sort(self.game.belt[0], category)
+        self.assertEqual([self.game.c.itemcget(label, "text")
+                          for label in self.game.bin_count_lbls], ["1", "2", "1"])
 
     def test_missed_drag_is_cleared_and_belt_continues(self):
         self.game._spawn()
@@ -133,6 +173,28 @@ class ConveyorTests(unittest.TestCase):
         self.assertLess(tab.probe_idx, 18)
         self.root.update_idletasks()  # Complete matplotlib's queued draws before destroying its widgets.
         lab.destroy()
+
+
+class AppStateTests(unittest.TestCase):
+    def test_home_resets_run_state_and_stops_previous_training(self):
+        old_stop_event = threading.Event()
+        app = SimpleNamespace(
+            stop_event=old_stop_event,
+            current_lr=0.02,
+            items=[object()],
+            trick_mode=True,
+            game_summary="SCORE 10",
+            show_title=lambda: setattr(app, "returned_home", True),
+        )
+        App.home(app)
+        self.assertTrue(old_stop_event.is_set())
+        self.assertIsNot(app.stop_event, old_stop_event)
+        self.assertFalse(app.stop_event.is_set())
+        self.assertEqual(app.current_lr, DEFAULT_LR)
+        self.assertEqual(app.items, [])
+        self.assertFalse(app.trick_mode)
+        self.assertEqual(app.game_summary, "")
+        self.assertTrue(app.returned_home)
 
 
 class TrainingTests(unittest.TestCase):

@@ -15,7 +15,15 @@ Choose Slow, Normal or Fast before or during the round. Missed items shrink into
 an animated blocky lava pit with pixel sparks. The lava is only a game effect;
 misses still receive no label and score zero.
 
-Correct sorts earn 10 points; wrong sorts and missed items
+Choose **Train** on the home screen for sorting feedback and scores, or **Trick**
+to hide whether each choice is correct during play and in the lab summary. Both
+modes save the bins you choose as training labels.
+While sorting, a table to the left of the conveyor shows the number of labeled
+items in each output bin and updates after every sort. Missed items are excluded.
+Use **Home** in the top-right corner to abandon the current run and return to the
+title screen; this resets the selected mode, training settings and run data.
+
+In Train mode, correct sorts earn 10 points; wrong sorts and missed items
 earn zero and reset the streak. Drop each item into a bin before its belt slot
 passes the exit, even while dragging it. Sorting all 30 correctly earns a perfect
 sorting round. The end screen shows points, correct/wrong sorts, misses, and the

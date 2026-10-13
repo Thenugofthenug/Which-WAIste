@@ -18,13 +18,19 @@ class LabScreen(RetroFrame):
         self.items = [item for item in app.items if item.label is not None]
         self.trained_model = None
         self.guide = None
-        help_btn = self.button(self, "? ROBOT FIELD GUIDE", self.open_guide, 10, bg=PICO['blue'])
-        help_btn.pack(anchor='e', padx=10, pady=(6, 0))
+        toolbar = tk.Frame(self, bg=self.cget("bg"))
+        toolbar.pack(fill="x", padx=10, pady=(6, 0))
+        self.button(toolbar, "RESTART", app.home, 10, bg=PICO['blue']).pack(side="right", padx=(8, 0))
+        help_btn = self.button(toolbar, "? ROBOT FIELD GUIDE", self.open_guide, 10, bg=PICO['blue'])
+        help_btn.pack(side="right")
         add_tooltip(help_btn, "Review pixels, filters, weights, training and model scores. You can read while training continues.", self.fonts)
 
         labels = [it.label for it in self.items]
         self.train_idx, self.val_idx, self.test_idx = stratified_split(labels, random.Random(42))
-        self.label(self, getattr(app, "game_summary", ""), 10, fg=ACCENT).pack(pady=8)
+        summary = ("TRICK MODE: SORTING FEEDBACK HIDDEN."
+                   if getattr(app, "trick_mode", False)
+                   else getattr(app, "game_summary", ""))
+        self.label(self, summary, 10, fg=ACCENT).pack(pady=8)
         self.label(self, f"{len(app.items) - len(self.items)} MISSED ITEMS EXCLUDED. POINTS ARE NOT MODEL ACCURACY.",
                    9).pack(pady=4)
         if not self.train_idx or not self.val_idx or not self.test_idx:

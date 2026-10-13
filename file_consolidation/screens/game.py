@@ -52,6 +52,7 @@ class GameScreen(RetroFrame):
     def __init__(self, master, app):
         super().__init__(master, app.fonts)
         self.app = app
+        self.trick_mode = getattr(app, "trick_mode", False)
         self.items = app.items
         self.belt = []                 # BeltItems on the belt (including one being dragged)
         self.next_spawn = 0
@@ -73,11 +74,14 @@ class GameScreen(RetroFrame):
 
         hud = tk.Frame(self, bg=PANEL, highlightthickness=3, highlightbackground=FG)
         hud.pack(fill="x", padx=12, pady=(12, 6))
+        self.button(hud, "RESTART", app.home, 10, bg=PICO["blue"]).pack(side="right", padx=10)
         self.count_lbl = self.label(hud, "", 11, padx=16, pady=8)
         self.count_lbl.pack(side="left")
         self.label(hud, "TRASH SORTER", 14, fg=PICO["green"], padx=16).pack(side="right")
-        self.label(self, "SORT BEFORE ITEMS SLIP PAST! +10 FOR A CORRECT BIN. WRONG OR MISSED: +0. YOUR LABELS TEACH THE ROBOT.",
-                   11, fg=MUTED).pack(pady=(0, 6))
+        instructions = ("SORT BEFORE ITEMS SLIP PAST! YOUR LABELS TEACH THE ROBOT."
+                        if self.trick_mode else
+                        "SORT BEFORE ITEMS SLIP PAST! +10 FOR A CORRECT BIN. WRONG OR MISSED: +0. YOUR LABELS TEACH THE ROBOT.")
+        self.label(self, instructions, 11, fg=MUTED).pack(pady=(0, 6))
         controls = tk.Frame(self, bg=self.cget('bg'))
         controls.pack(fill='x', padx=16, pady=(0, 6))
         self.label(controls, "BELT SPEED", 10, fg=ACCENT).pack(side='left', padx=(0, 10))
@@ -152,6 +156,23 @@ class GameScreen(RetroFrame):
         self.fb_text = self.c.create_text(265, 170, text="", fill=FG, font=self.fonts(22), width=440)
         self.fb_sub = self.c.create_text(265, 250, text="", fill=MUTED, font=self.fonts(10), width=440)
         self.truck_text = self.c.create_text(1015, 170, text="", fill=FG, font=self.fonts(12), width=420)
+        self._draw_bin_counts()
+
+    def _draw_bin_counts(self):
+        left, top, right, bottom = 28, 320, 502, 510
+        self.c.create_rectangle(left, top, right, bottom, fill=PANEL, outline=FG, width=3)
+        self.c.create_text((left + right) / 2, top + 22, text="ITEMS IN EACH BIN",
+                           fill=ACCENT, font=self.fonts(12))
+        self.bin_count_lbls = []
+        for i, color in enumerate(CAT_COLORS):
+            y = top + 65 + i * 40
+            if i:
+                self.c.create_line(left + 14, y - 19, right - 14, y - 19, fill="#46464f")
+            self.c.create_text(left + 24, y, text=CATEGORIES[i].upper(), anchor="w",
+                               fill=color, font=self.fonts(11))
+            self.bin_count_lbls.append(
+                self.c.create_text(right - 24, y, text="0", anchor="e",
+                                   fill=FG, font=self.fonts(13)))
 
     # -------------------------------------------------------------- helpers
     def open_guide(self):
@@ -181,8 +202,15 @@ class GameScreen(RetroFrame):
         self._jobs.append(self.after(ms, fn))
 
     def _update_counts(self):
-        self.count_lbl.config(text=f"DONE {self.sorted + self.missed:02d}/{len(self.items)}  "
-                                  f"SCORE {self.score}  RIGHT {self.correct}  MISSED {self.missed}  STREAK {self.streak}")
+        if self.trick_mode:
+            counts = f"DONE {self.sorted + self.missed:02d}/{len(self.items)}  MISSED {self.missed}"
+        else:
+            counts = (f"DONE {self.sorted + self.missed:02d}/{len(self.items)}  "
+                      f"SCORE {self.score}  RIGHT {self.correct}  MISSED {self.missed}  STREAK {self.streak}")
+        self.count_lbl.config(text=counts)
+        bin_counts = [sum(item.label == i for item in self.items) for i in range(len(CATEGORIES))]
+        for count_lbl, count in zip(self.bin_count_lbls, bin_counts):
+            self.c.itemconfig(count_lbl, text=str(count))
         left = len(self.items) - self.next_spawn
         self.c.itemconfig(self.truck_text, text=f"STILL ON THE TRUCK:\n{left} ITEM{'S' if left != 1 else ''}"
                           if left else "LAST ITEMS ON THE BELT!")
@@ -302,15 +330,21 @@ class GameScreen(RetroFrame):
         item = self.items[b.index]
         item.label = cat
         self.sorted += 1
-        if cat == item.expected:
+        is_correct = cat == item.expected
+        if is_correct:
             self.correct += 1
             self.score += 10
             self.streak += 1
             self.best_streak = max(self.best_streak, self.streak)
+        else:
+            self.streak = 0
+        if self.trick_mode:
+            self.c.itemconfig(self.fb_text, text="ITEM SORTED", fill=FG)
+            self.c.itemconfig(self.fb_sub, text="YOUR LABEL WAS SAVED AS A ROBOT PRACTICE EXAMPLE.")
+        elif is_correct:
             self.c.itemconfig(self.fb_text, text="NICE! +10", fill=PICO["green"])
             self.c.itemconfig(self.fb_sub, text=f"STREAK: {self.streak}! YOUR LABEL GIVES THE ROBOT A PRACTICE EXAMPLE.")
         else:
-            self.streak = 0
             self.c.itemconfig(self.fb_text, text="CHECK THAT BIN! +0", fill=PICO["red"])
             self.c.itemconfig(self.fb_sub, text=f"MOST PROGRAMS PUT {item.name.upper()} IN "
                                                 f"{CATEGORIES[item.expected].upper()}. RULES VARY - "
@@ -365,16 +399,24 @@ class GameScreen(RetroFrame):
     def _finish_if_complete(self):
         if not self.done and self.sorted + self.missed == len(self.items):
             self.done = True
-            self.app.game_summary = (f"SCORE {self.score}/{len(self.items) * 10} | RIGHT {self.correct} | "
-                                     f"WRONG {self.sorted - self.correct} | MISSED {self.missed} | BEST STREAK {self.best_streak}")
+            if self.trick_mode:
+                self.app.game_summary = f"ROUND COMPLETE | MISSED {self.missed}"
+            else:
+                self.app.game_summary = (f"SCORE {self.score}/{len(self.items) * 10} | RIGHT {self.correct} | "
+                                         f"WRONG {self.sorted - self.correct} | MISSED {self.missed} | BEST STREAK {self.best_streak}")
             self._later(500, self._show_summary)
 
     def _show_summary(self):
         perfect = self.correct == len(self.items)
-        self.c.itemconfig(self.fb_text, text="PERFECT SORTING!" if perfect else "SORTING MISSION COMPLETE!", fill=ACCENT)
-        self.c.itemconfig(self.fb_sub, text=f"{self.app.game_summary}\n\n"
-                                         "DID OUR ROBOT IMPROVE? TRAIN IT TO FIND OUT.\n"
-                                         "GAME POINTS ARE NOT MODEL ACCURACY.")
+        if self.trick_mode:
+            self.c.itemconfig(self.fb_text, text="ROUND COMPLETE!", fill=ACCENT)
+            self.c.itemconfig(self.fb_sub, text="YOUR LABELS ARE READY.\n\n"
+                                                "DID OUR ROBOT IMPROVE? TRAIN IT TO FIND OUT.")
+        else:
+            self.c.itemconfig(self.fb_text, text="PERFECT SORTING!" if perfect else "SORTING MISSION COMPLETE!", fill=ACCENT)
+            self.c.itemconfig(self.fb_sub, text=f"{self.app.game_summary}\n\n"
+                                                "DID OUR ROBOT IMPROVE? TRAIN IT TO FIND OUT.\n"
+                                                "GAME POINTS ARE NOT MODEL ACCURACY.")
         self.button(self, "TEACH THE ROBOT >", self.app.show_lab, 11, bg=PICO["green"]).place(x=840, y=380)
         self.button(self, "PLAY AGAIN", self.app.new_game, 11, bg=MUTED).place(x=840, y=440)
 
