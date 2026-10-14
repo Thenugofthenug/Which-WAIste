@@ -1,7 +1,7 @@
 :root {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: #182230;
-  background: #f5f6fa;
+  font-family: 'Courier New', monospace;
+  color: #fff1e8;
+  background: #090d1b;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -18,6 +18,9 @@ body {
 code {
   padding: 2px 5px;
   border-radius: 4px;
-  background: #f0efff;
+  background: #1d2b53;
   font-size: 0.9em;
 }
+
+p { line-height: 1.65; }
+svg text { font-family: 'Courier New', monospace; font-weight: bold; }

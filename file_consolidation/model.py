@@ -99,7 +99,7 @@ def probe_model(model, img):
 # ----------------------------------------------------------------------------
 # Training loop (GUI-agnostic)
 # ----------------------------------------------------------------------------
-def train_model(train_imgs, train_labels, val_set, test_set, get_lr, get_probe, stop_event, emit):
+def train_model(train_imgs, train_labels, val_set, test_set, get_lr, get_probe, stop_event, emit, epochs=None):
     """Train a fresh TrashCNN for EPOCHS epochs.
 
     get_lr()      -> current learning rate; read every batch, so a live slider works.
@@ -115,7 +115,15 @@ def train_model(train_imgs, train_labels, val_set, test_set, get_lr, get_probe, 
     opt = torch.optim.Adam(model.parameters(), lr=last_lr, weight_decay=1e-4)
     best = {"loss": float("inf"), "epoch": 0, "state": None}
     stopped = False
-    _, before_test_acc, _ = evaluate(model, Xt, yt)
+    _, before_test_acc, before_logits = evaluate(model, Xt, yt)
+
+    def item_probabilities(logits):
+        per_item = {}
+        for p, owner in zip(F.softmax(logits, dim=1), test_owner):
+            per_item.setdefault(owner, []).append(p)
+        return {o: torch.stack(ps).mean(0).tolist() for o, ps in per_item.items()}
+
+    before_item_probs = item_probabilities(before_logits)
 
     def probe_payload():
         idx, img = get_probe()
@@ -124,7 +132,7 @@ def train_model(train_imgs, train_labels, val_set, test_set, get_lr, get_probe, 
 
     emit("probe", probe_payload())
 
-    for epoch in range(1, EPOCHS + 1):
+    for epoch in range(1, (epochs if epochs is not None else EPOCHS) + 1):
         X, y = make_train_epoch(train_imgs, train_labels, rng)
         perm = torch.randperm(len(X))
         prev_w = block_weights(model)
@@ -164,10 +172,7 @@ def train_model(train_imgs, train_labels, val_set, test_set, get_lr, get_probe, 
     if best["state"] is not None:
         model.load_state_dict(best["state"])
     tl, ta, logits = evaluate(model, Xt, yt)
-    per_item = {}
-    for p, owner in zip(F.softmax(logits, dim=1), test_owner):
-        per_item.setdefault(owner, []).append(p)
-    item_probs = {o: torch.stack(ps).mean(0).tolist() for o, ps in per_item.items()}
+    item_probs = item_probabilities(logits)
     model.eval()
     emit("done", {"test_loss": tl, "test_acc": ta, "before_test_acc": before_test_acc, "best_epoch": best["epoch"],
-                  "item_probs": item_probs, "stopped": stopped, "model": model})
+                  "item_probs": item_probs, "before_item_probs": before_item_probs, "stopped": stopped, "model": model})
