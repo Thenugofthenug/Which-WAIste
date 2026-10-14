@@ -432,7 +432,7 @@ class GameScreen(RetroFrame):
         self.summary_controls = tk.Frame(self.c, bg=PICO["dark_blue"])
         self.button(self.summary_controls, "TEACH THE ROBOT >", self.app.show_lab,
                     11, bg=PICO["green"]).pack(pady=4)
-        self.button(self.summary_controls, "PLAY AGAIN", self.app.new_game,
+        self.button(self.summary_controls, "SORT AGAIN", self.app.new_game,
                     11, bg=MUTED).pack(pady=4)
         self.summary_window = self.c.create_window(CANVAS_W / 2, BELT_END - 48,
                                                    window=self.summary_controls)

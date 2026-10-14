@@ -60,7 +60,7 @@ class TrainTab(RetroFrame):
         self.epoch_lbl.pack()
         self.status_lbl = self.label(ctrl, "READY.", 10, fg=ACCENT, wraplength=256, justify="left")
         self.status_lbl.pack(anchor="w", pady=6)
-        self.again_btn = self.button(ctrl, "PLAY AGAIN", self.app.new_game, 10, bg=MUTED)
+        self.again_btn = self.button(ctrl, "SORT AGAIN", self.app.new_game, 10, bg=MUTED)
         self.again_btn.pack(fill="x", pady=3)
 
     def _build_accuracy(self, parent):
