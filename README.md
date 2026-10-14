@@ -4,11 +4,47 @@
 
 The current experiment builds on the Python/Tkinter game in `file_consolidation`,
 keeping its retro palette, sprites, conveyor and drag-and-drop bins. From the
-repository root, run it with the existing Python environment:
+repository root on macOS/Linux, run it with the existing Python environment:
 
-```powershell
-.\.venv\Scripts\python.exe .\file_consolidation\main.py
+```bash
+./venv/bin/python file_consolidation/main.py
 ```
+
+On Windows, use `.\.venv\Scripts\python.exe .\file_consolidation\main.py`.
+
+## Web app (Vite + FastAPI)
+
+The browser version uses React/Vite for the game and FastAPI for the existing
+PyTorch CNN. Start both processes from the repository root, in separate terminals.
+
+Install frontend dependencies once:
+
+```bash
+npm run setup
+```
+
+Install the API dependencies into the project environment:
+
+```bash
+./venv/bin/python -m pip install -r backend/requirements.txt
+```
+
+Start the API:
+
+```bash
+./venv/bin/python -m uvicorn backend.main:app --reload
+```
+
+Then, in another terminal, start the Vite development server:
+
+```bash
+npm run dev
+```
+
+Open <http://localhost:5173/>. Vite proxies `/api` requests to FastAPI at
+<http://127.0.0.1:8000/>. The API generates the pixel-art items, trains the same
+CNN used by the desktop application, streams epoch updates to the browser, and
+serves predictions for new items.
 
 The belt keeps moving, with a default speed about 60% faster than the first experiment.
 Choose Slow, Medium or Fast using the buttons below the remaining-items count.
@@ -52,28 +88,10 @@ Run the desktop interaction and training checks with:
 .\.venv\Scripts\python.exe -B -m unittest discover -s file_consolidation/tests -v
 ```
 
-The React setup instructions below describe the starter frontend, which is not
-connected to this desktop game.
+## Frontend prerequisites
 
-Which wAIst is a waste sorting game with a neural network. It starts with a React frontend built with Vite. A Python/FastAPI backend can be added later.
-
-## Prerequisites
-
-- Node.js and npm. Check them in PowerShell with `node --version` and `npm --version`. Vite currently requires Node.js 20.19+ or 22.12+.
+- Node.js and npm. Vite currently requires Node.js 20.19+ or 22.12+.
 - A code editor and a modern web browser.
-- Python is **not needed yet**. Python will be needed for when we begin working on the backend, then you can check it with `py --version` or `python --version`.
-
-## Run the frontend
-
-Open a terminal in the `Which wAIst` project folder and run:
-```powershell
-npm run setup
-npm run dev
-```
-
-Open the local address printed by Vite, usually <http://localhost:5173/>. Edit `frontend/src/App.jsx` and save it;  browser should update automatically. Press `Ctrl+C` in PowerShell to stop the server.
-
-`npm run setup` installs frontend dependencies after a fresh copy or when dependencies change.
 
 ## Useful checks
 

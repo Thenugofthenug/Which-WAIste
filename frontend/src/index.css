@@ -1,23 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
 :root {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: #182230;
-  background: #f5f6fa;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  color: #fff1e8;
+  background: #090d1d;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  --bg: #090d1d;
+  --panel: #141d3a;
+  --panel-light: #1d2b53;
+  --green: #00e436;
+  --blue: #29adff;
+  --yellow: #ffec27;
+  --red: #ff004d;
+  --text: #fff1e8;
+  --muted: #a6aed1;
+  --border: rgba(194, 195, 199, 0.22);
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
+  min-width: 320px;
+  min-height: 100vh;
   margin: 0;
+  background:
+    radial-gradient(ellipse at 82% 8%, rgba(41, 173, 255, 0.12), transparent 35rem),
+    radial-gradient(ellipse at 10% 80%, rgba(0, 228, 54, 0.07), transparent 30rem),
+    var(--bg);
 }
 
-code {
-  padding: 2px 5px;
-  border-radius: 4px;
-  background: #f0efff;
-  font-size: 0.9em;
-}
+button, input { font: inherit; }
+button { cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid var(--yellow); outline-offset: 3px; }
+img { display: block; max-width: 100%; }
+
+::selection { color: #090d1d; background: var(--green); }
