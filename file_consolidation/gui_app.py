@@ -8,6 +8,7 @@ The screens themselves live in the screens/ package.
 import queue
 import threading
 
+from analytics import Stats
 from config import BG, DEFAULT_LR, NUM_ITEMS
 from items import make_game_items
 from screens.game import GameScreen
@@ -30,6 +31,7 @@ class App:
         self.stop_event = threading.Event()  # GUI -> training thread
         self.current_lr = DEFAULT_LR         # survives across games
         self.items = []
+        self.stats = Stats()                 # anonymous usage statistics (analytics.py)
         self.screen = None
 
         self.show_title()
@@ -68,4 +70,5 @@ class App:
 
     def on_close(self):
         self.stop_event.set()
+        self.stats.close()
         self.root.destroy()

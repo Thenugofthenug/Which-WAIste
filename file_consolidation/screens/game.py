@@ -3,14 +3,16 @@ Conveyor-belt sorting game (top-down view)
 ==========================================
 Trash rides down the belt; drag each item into the Recycling, Compost or
 Landfill bin. The bin you choose becomes that item's training label. If an
-item reaches the end of the belt unsorted, the belt stops until you sort it.
+item reaches the end unsorted, it is missed and has no training label.
 """
 import tkinter as tk
 from dataclasses import dataclass
 
 from PIL import ImageTk
 
-from config import ACCENT, CAT_COLORS, CATEGORIES, FG, MUTED, NUM_ITEMS, PANEL, PICO, hex_to_rgb
+from analytics import stats_for
+from config import ACCENT, CAT_COLORS, CATEGORIES, FG, MUTED, PANEL, PICO, hex_to_rgb
+from learning_help import LearningGuide, add_tooltip
 from sprites import cutout, sprite
 from widgets import RetroFrame
 
@@ -20,7 +22,7 @@ BELT_X0, BELT_X1 = 530, 750            # belt surface
 BELT_MID = (BELT_X0 + BELT_X1) / 2
 BELT_END = 470                         # the stopper bar
 ITEM_PX = 128                          # on-screen item size (a multiple of the 64 px sprite)
-STOP_Y = BELT_END - ITEM_PX / 2 - 16   # where the front item halts
+STOP_Y = BELT_END + 16               # where an unsorted item falls into lava
 SPACING = 180                          # gap between items as they enter the belt
 ROLLER_GAP = 30
 BIN_W, BIN_H, BIN_TOP = 300, 200, 548
@@ -28,7 +30,8 @@ BIN_CENTERS = [280, 640, 1000]
 
 # ---- timing -----------------------------------------------------------------
 FRAME_MS = 30                          # ~33 frames per second
-SPEED = 2.2                            # belt speed, pixels per frame
+SPEED = 3.6                            # faster default, pixels per frame
+SPEEDS = {"SLOW": 2.2, "NORMAL": SPEED, "FAST": 5.0}
 
 
 def tint(hex_col, f):
@@ -54,20 +57,45 @@ class GameScreen(RetroFrame):
         self.belt = []                 # BeltItems on the belt (including one being dragged)
         self.next_spawn = 0
         self.sorted = 0
+        self.correct = 0
+        self.missed = 0
+        self.score = 0
+        self.streak = 0
+        self.best_streak = 0
         self.drag = None               # (BeltItem, grab offset x, grab offset y)
         self.roll = 0.0
         self.frame = 0
         self.done = False
         self._jobs = []                # one-off timers (animations, end of game)
         self._tick_job = None
+        self.paused = False
+        self.guide = None
+        self.speed = tk.StringVar(value="NORMAL")
+        self.stats = stats_for(app)
+        self.stats.start_game()
 
         hud = tk.Frame(self, bg=PANEL, highlightthickness=3, highlightbackground=FG)
         hud.pack(fill="x", padx=12, pady=(12, 6))
-        self.count_lbl = self.label(hud, "", 14, padx=16, pady=8)
+        self.count_lbl = self.label(hud, "", 11, padx=16, pady=8)
         self.count_lbl.pack(side="left")
         self.label(hud, "TRASH SORTER", 14, fg=PICO["green"], padx=16).pack(side="right")
-        self.label(self, "DRAG EACH ITEM OFF THE BELT INTO A BIN - YOUR CHOICES BECOME THE NETWORK'S LABELS",
+        self.label(self, "SORT BEFORE ITEMS SLIP PAST! +10 FOR A CORRECT BIN. WRONG OR MISSED: +0. YOUR LABELS TEACH THE ROBOT.",
                    11, fg=MUTED).pack(pady=(0, 6))
+        controls = tk.Frame(self, bg=self.cget('bg'))
+        controls.pack(fill='x', padx=16, pady=(0, 6))
+        self.label(controls, "BELT SPEED", 10, fg=ACCENT).pack(side='left', padx=(0, 10))
+        self.speed_btns = {}
+        for name in SPEEDS:                      # one button per speed; the chosen one lights up
+            btn = self.button(controls, name, lambda n=name: self.speed.set(n), 10, bg=PICO["light_gray"])
+            btn.pack(side='left', padx=(0, 6))
+            add_tooltip(btn, "Normal is faster than before. Choose Slow for more time or Fast for a challenge.",
+                        self.fonts)
+            self.speed_btns[name] = btn
+        self.speed.trace_add("write", lambda *_: self._show_speed())
+        self._show_speed()
+        help_btn = self.button(controls, "? LEARNING TIPS", self.open_guide, 10, bg=PICO['blue'])
+        help_btn.pack(side='right')
+        add_tooltip(help_btn, "Explore labels, pixels, filters, weights and fair testing. The belt pauses while the guide is open.", self.fonts)
 
         self.c = tk.Canvas(self, width=CANVAS_W, height=CANVAS_H, bg=PICO["dark_blue"], highlightthickness=0)
         self.c.pack()
@@ -97,13 +125,22 @@ class GameScreen(RetroFrame):
         n = BELT_END // ROLLER_GAP + 1
         self.rollers = [c.create_line(BELT_X0 + 4, 0, BELT_X1 - 4, 0, fill="#46464f", width=3) for _ in range(n)]
         self._move_rollers()
-        # hazard-striped stopper
+        # hazard-striped edge and a blocky lava pool below the rail
         c.create_rectangle(BELT_X0 - 16, BELT_END, BELT_X1 + 16, BELT_END + 18, fill=PICO["black"], outline="")
         for x in range(BELT_X0 - 16, BELT_X1 + 16, 24):
             c.create_polygon(x, BELT_END + 18, x + 12, BELT_END, x + 24, BELT_END, x + 12, BELT_END + 18,
                              fill=PICO["yellow"], outline="")
-        self.jam_text = c.create_text(BELT_X1 + 30, STOP_Y, text="< BELT STOPPED\n  SORT ME!", anchor="w",
-                                      fill=PICO["red"], font=self.fonts(12), state="hidden")
+        c.create_text(BELT_X1 + 30, BELT_END, text="< LAVA PIT!\n  SAVE THE EXAMPLES!", anchor="w",
+                      fill=PICO["yellow"], font=self.fonts(10))
+        c.create_rectangle(BELT_X0 - 20, BELT_END + 18, BELT_X1 + 20, 542,
+                           fill=PICO['dark_gray'], outline=PICO['light_gray'], width=4)
+        self.lava_tiles = []
+        for row in range(3):
+            for col in range(12):
+                x, y = BELT_X0 - 10 + col * 20, BELT_END + 22 + row * 12
+                self.lava_tiles.append(c.create_rectangle(x, y, x + 20, y + 12,
+                                                         fill=PICO['orange'], outline='', tags='lava'))
+        self._animate_lava()
 
     def _draw_bins(self):
         c = self.c
@@ -123,12 +160,42 @@ class GameScreen(RetroFrame):
         self.truck_text = self.c.create_text(1015, 170, text="", fill=FG, font=self.fonts(12), width=420)
 
     # -------------------------------------------------------------- helpers
+    def open_guide(self):
+        if self.guide is not None and self.guide.winfo_exists():
+            self.guide.lift()
+            return
+        self.paused = True
+        if self.drag is not None:
+            b = self.drag[0]
+            b.dragging = False
+            self._place(b)
+            self.drag = None
+            self.c.config(cursor='')
+            self._highlight_bin(None)
+        self.guide = LearningGuide(self, self._close_guide)
+
+    def _show_speed(self):
+        """Light up the button for the current belt speed."""
+        for name, btn in self.speed_btns.items():
+            if btn.winfo_exists():
+                btn.set_color(ACCENT if name == self.speed.get() else PICO["light_gray"])
+
+    def _close_guide(self):
+        self.guide = None
+        self.paused = False
+
+    def _animate_lava(self):
+        colors = [PICO['orange'], PICO['yellow'], PICO['red'], PICO['orange']]
+        for i, tile in enumerate(self.lava_tiles):
+            self.c.itemconfig(tile, fill=colors[(i * 7 + i // 12 + self.frame // 6) % len(colors)])
+
     def _later(self, ms, fn):
         self._jobs.append(self.after(ms, fn))
 
     def _update_counts(self):
-        self.count_lbl.config(text=f"SORTED {self.sorted:02d}/{NUM_ITEMS}")
-        left = NUM_ITEMS - self.next_spawn
+        self.count_lbl.config(text=f"DONE {self.sorted + self.missed:02d}/{len(self.items)}  "
+                                  f"SCORE {self.score}  RIGHT {self.correct}  MISSED {self.missed}  STREAK {self.streak}")
+        left = len(self.items) - self.next_spawn
         self.c.itemconfig(self.truck_text, text=f"STILL ON THE TRUCK:\n{left} ITEM{'S' if left != 1 else ''}"
                           if left else "LAST ITEMS ON THE BELT!")
 
@@ -168,21 +235,27 @@ class GameScreen(RetroFrame):
     def _tick(self):
         if self.done:
             return
+        if self.paused:
+            self._tick_job = self.after(FRAME_MS, self._tick)
+            return
         self.frame += 1
-        jammed = any(b.y >= STOP_Y for b in self.belt)
-        if not jammed:
-            self.roll = (self.roll + SPEED) % ROLLER_GAP
-            self._move_rollers()
-            for b in self.belt:
-                b.y = min(b.y + SPEED, STOP_Y)
-                if not b.dragging:
-                    self._place(b)
-        if self.next_spawn < NUM_ITEMS:
+        speed = SPEEDS[self.speed.get()]
+        self.roll = (self.roll + speed) % ROLLER_GAP
+        self._move_rollers()
+        if self.frame % 6 == 0:
+            self._animate_lava()
+        for b in self.belt[:]:
+            b.y += speed
+            if b.y >= STOP_Y:
+                self._miss(b)
+            elif not b.dragging:
+                self._place(b)
+        if self.done:
+            return
+        if self.next_spawn < len(self.items):
             top = min((b.y for b in self.belt), default=None)
             if top is None or top >= -ITEM_PX / 2 + SPACING:
                 self._spawn()
-        blink_on = jammed and (self.frame // 12) % 2 == 0
-        self.c.itemconfig(self.jam_text, state="normal" if blink_on else "hidden")
         self._tick_job = self.after(FRAME_MS, self._tick)
 
     # ------------------------------------------------------------- dragging
@@ -203,7 +276,7 @@ class GameScreen(RetroFrame):
         return None
 
     def _on_press(self, e):
-        if self.done or self.drag is not None:
+        if self.done or self.paused or self.drag is not None:
             return
         b = self._item_at(e.x, e.y)
         if b is None:
@@ -215,14 +288,14 @@ class GameScreen(RetroFrame):
         self.c.tag_raise(b.text_id)
 
     def _on_drag(self, e):
-        if self.drag is None:
+        if self.drag is None or self.paused:
             return
         b, dx, dy = self.drag
         self._place(b, e.x + dx, e.y + dy)
         self._highlight_bin(self._bin_at(e.x, e.y))
 
     def _on_release(self, e):
-        if self.drag is None:
+        if self.drag is None or self.paused:
             return
         b, _, _ = self.drag
         self.drag = None
@@ -241,22 +314,85 @@ class GameScreen(RetroFrame):
         item = self.items[b.index]
         item.label = cat
         self.sorted += 1
+        self.stats.item_sorted(item.name, item.expected, cat)
         if cat == item.expected:
-            self.c.itemconfig(self.fb_text, text="NICE!", fill=PICO["green"])
-            self.c.itemconfig(self.fb_sub, text="")
+            self.correct += 1
+            self.score += 10
+            self.streak += 1
+            self.best_streak = max(self.best_streak, self.streak)
+            self.c.itemconfig(self.fb_text, text="NICE! +10", fill=PICO["green"])
+            self.c.itemconfig(self.fb_sub, text=f"STREAK: {self.streak}! YOUR LABEL GIVES THE ROBOT A PRACTICE EXAMPLE.")
         else:
-            self.c.itemconfig(self.fb_text, text="MISS!", fill=PICO["red"])
+            self.streak = 0
+            self.c.itemconfig(self.fb_text, text="CHECK THAT BIN! +0", fill=PICO["red"])
             self.c.itemconfig(self.fb_sub, text=f"MOST PROGRAMS PUT {item.name.upper()} IN "
                                                 f"{CATEGORIES[item.expected].upper()}. RULES VARY - "
-                                                f"YOUR LABEL STILL COUNTS.")
+                                                f"THE ROBOT LEARNS YOUR LABEL, EVEN WHEN IT IS WRONG.")
         self._drop_into_bin(b, cat)
         self._update_counts()
-        if self.sorted == NUM_ITEMS:
+        self._finish_if_complete()
+
+    def _miss(self, b):
+        self.belt.remove(b)
+        self.items[b.index].label = None
+        self.missed += 1
+        self.stats.item_sorted(self.items[b.index].name, self.items[b.index].expected, None)
+        self.streak = 0
+        if self.drag is not None and self.drag[0] is b:
+            self.drag = None
+            self.c.config(cursor="")
+            self._highlight_bin(None)
+        self._burn_into_lava(b)
+        self.c.itemconfig(self.fb_text, text="OH NO! INTO THE LAVA", fill=PICO["orange"])
+        self.c.itemconfig(self.fb_sub, text="OUR ROBOT MISSED A PRACTICE EXAMPLE. CATCH THE NEXT ONE!\n"
+                                         "NO POINTS THIS TIME. MISSED ITEMS HAVE NO TRAINING LABEL.")
+        self._update_counts()
+        self._finish_if_complete()
+
+    def _burn_into_lava(self, b):
+        """Shrink a missed sprite into the pool and release square sparks."""
+        self.c.delete(b.text_id)
+        self.c.dtag(b.image_id, 'trash')
+        sparks = [self.c.create_rectangle(0, 0, 0, 0, fill=col, outline='', tags='lava-spark')
+                  for col in [PICO['yellow'], PICO['orange']] * 4]
+
+        def step(k):
+            if k > 10:
+                self.c.delete(b.image_id)
+                for spark in sparks:
+                    self.c.delete(spark)
+                return
+            size = max(8, round(ITEM_PX * (1 - k / 11)))
+            b.photo = ImageTk.PhotoImage(cutout(sprite(self.items[b.index].image, size)))
+            self.c.itemconfig(b.image_id, image=b.photo)
+            self.c.coords(b.image_id, BELT_MID, BELT_END + 18 + k * 2)
+            self.c.tag_raise(b.image_id)
+            for i, spark in enumerate(sparks):
+                x = BELT_MID + (i - 3.5) * (k + 4)
+                y = BELT_END + 36 - k * 4 + (i % 3) * 6
+                self.c.coords(spark, x, y, x + 6, y + 6)
+                self.c.tag_raise(spark)
+            self._later(FRAME_MS, lambda: step(k + 1))
+
+        step(1)
+
+    def _finish_if_complete(self):
+        if not self.done and self.sorted + self.missed == len(self.items):
             self.done = True
-            self.c.itemconfig(self.jam_text, state="hidden")
-            self._later(500, lambda: (self.c.itemconfig(self.fb_text, text="STAGE CLEAR!", fill=ACCENT),
-                                      self.c.itemconfig(self.fb_sub, text="LOADING NEURAL NETWORK...")))
-            self._later(2000, self.app.show_lab)
+            self.stats.finish_game(self.score, self.correct, self.sorted - self.correct, self.missed,
+                                   self.best_streak)
+            self.app.game_summary = (f"SCORE {self.score}/{len(self.items) * 10} | RIGHT {self.correct} | "
+                                     f"WRONG {self.sorted - self.correct} | MISSED {self.missed} | BEST STREAK {self.best_streak}")
+            self._later(500, self._show_summary)
+
+    def _show_summary(self):
+        perfect = self.correct == len(self.items)
+        self.c.itemconfig(self.fb_text, text="PERFECT SORTING!" if perfect else "SORTING MISSION COMPLETE!", fill=ACCENT)
+        self.c.itemconfig(self.fb_sub, text=f"{self.app.game_summary}\n\n"
+                                         "DID OUR ROBOT IMPROVE? TRAIN IT TO FIND OUT.\n"
+                                         "GAME POINTS ARE NOT MODEL ACCURACY.")
+        self.button(self, "TEACH THE ROBOT >", self.app.show_lab, 11, bg=PICO["green"]).place(x=840, y=380)
+        self.button(self, "PLAY AGAIN", self.app.new_game, 11, bg=PICO["light_gray"]).place(x=840, y=440)
 
     def _drop_into_bin(self, b, cat, steps=7):
         """Slide the item into the bin opening, flash the bin, then remove the item."""

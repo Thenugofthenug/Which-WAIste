@@ -7,7 +7,7 @@ builds on, giving it shared label() / button() / panel() helpers.
 import tkinter as tk
 import tkinter.font as tkfont
 
-from config import BG, FG, MONO_FONTS, PANEL, PICO, PIXEL_FONTS
+from config import ACCENT, BG, FG, MONO_FONTS, PANEL, PICO, PIXEL_FONTS
 
 
 class RetroFonts:
@@ -29,11 +29,16 @@ class RetroFonts:
 
 
 class PixelButton(tk.Label):
-    """Chunky 8-bit button. Built on a Label so its colors work on every platform."""
+    """Chunky 8-bit button. Built on a Label so its colors work on every platform.
+    A white outline makes it stand out on dark panels; when disabled it goes flat
+    and gray. It can also be reached with Tab and pressed with Enter or Space."""
+
+    BORDER = 3
 
     def __init__(self, master, text, command, font, bg=PICO["blue"], fg=PICO["black"], width=None):
         super().__init__(master, text=text, font=font, bg=bg, fg=fg, relief="raised", bd=4,
-                         padx=14, pady=7, cursor="hand2")
+                         padx=16, pady=8, cursor="hand2", takefocus=True,
+                         highlightthickness=self.BORDER, highlightbackground=FG, highlightcolor=ACCENT)
         if width:
             self.config(width=width)
         self._bg, self._fg, self._command, self._enabled = bg, fg, command, True
@@ -41,6 +46,8 @@ class PixelButton(tk.Label):
         self.bind("<Leave>", self._unhover)
         self.bind("<ButtonPress-1>", self._press)
         self.bind("<ButtonRelease-1>", self._release)
+        self.bind("<Return>", self._key)
+        self.bind("<space>", self._key)
 
     def _hover(self, _):
         if self._enabled:
@@ -61,11 +68,16 @@ class PixelButton(tk.Label):
         if 0 <= event.x <= self.winfo_width() and 0 <= event.y <= self.winfo_height():
             self._command()          # may destroy this widget, so nothing after this
 
+    def _key(self, _):
+        if self._enabled:
+            self._command()
+
     def set_enabled(self, enabled):
         self._enabled = enabled
         self.config(bg=self._bg if enabled else PICO["dark_gray"],
                     fg=self._fg if enabled else PICO["light_gray"],
-                    cursor="hand2" if enabled else "arrow", relief="raised")
+                    highlightbackground=FG if enabled else PICO["dark_gray"],
+                    cursor="hand2" if enabled else "arrow", relief="raised" if enabled else "flat")
 
     def set_color(self, bg):
         self._bg = bg
