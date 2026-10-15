@@ -30,10 +30,10 @@ function Curve({ history, loss = false }) {
   const maxY = loss ? Math.max(1, ...history.flatMap(row => keys.map(key => row[key]))) : 1
   const maxX = Math.max(3, ...history.map(row => row.epoch))
   return <figure className="curve"><h3>{loss ? 'Prediction error (loss)' : 'Matches to labels (accuracy)'}</h3>
-    <svg viewBox="0 0 430 180" role="img" aria-label={`${loss ? 'Loss' : 'Accuracy'} by epoch; training blue, validation red`}>
-      {[0, .5, 1].map(level => <g key={level}><path d={`M42 ${140 - level * 115} H415`} stroke="#5f574f" strokeDasharray="3 4" /><text x="35" y={144 - level * 115} textAnchor="end" fill="#83769c" fontSize="11">{loss ? (maxY * level).toFixed(1) : `${level * 100}%`}</text></g>)}
-      {keys.map((key, i) => <polyline key={key} fill="none" stroke={i ? '#ff004d' : '#29adff'} strokeWidth="3" points={history.map(row => `${42 + row.epoch / maxX * 373},${140 - row[key] / maxY * 115}`).join(' ')} />)}
-      <text x="42" y="164" fill="#83769c" fontSize="11">0</text><text x="415" y="164" fill="#83769c" textAnchor="end" fontSize="11">Epoch {maxX}</text>
+    <svg viewBox="0 0 430 180" role="img" aria-label={`${loss ? 'Loss' : 'Accuracy'} by epoch; training green, validation amber`}>
+      {[0, .5, 1].map(level => <g key={level}><path d={`M42 ${140 - level * 115} H415`} stroke="#2e4c38" strokeDasharray="3 4" /><text x="35" y={144 - level * 115} textAnchor="end" fill="#a3b9aa" fontSize="11">{loss ? (maxY * level).toFixed(1) : `${level * 100}%`}</text></g>)}
+      {keys.map((key, i) => <polyline key={key} fill="none" stroke={i ? '#ffcc80' : '#69f58e'} strokeWidth="3" points={history.map(row => `${42 + row.epoch / maxX * 373},${140 - row[key] / maxY * 115}`).join(' ')} />)}
+      <text x="42" y="164" fill="#a3b9aa" fontSize="11">0</text><text x="415" y="164" fill="#a3b9aa" textAnchor="end" fontSize="11">Epoch {maxX}</text>
     </svg><figcaption><span className="train-key">■ Training</span> <span className="val-key">■ Validation</span>{!history.length && ' · Waiting for training'}</figcaption></figure>
 }
 

@@ -1,7 +1,7 @@
 :root {
   font-family: 'Courier New', monospace;
-  color: #fff1e8;
-  background: #090d1b;
+  color: #edf9ef;
+  background: #050807;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -18,7 +18,7 @@ body {
 code {
   padding: 2px 5px;
   border-radius: 4px;
-  background: #1d2b53;
+  background: #14261b;
   font-size: 0.9em;
 }
 

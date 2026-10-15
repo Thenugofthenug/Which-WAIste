@@ -98,16 +98,16 @@ export default function Conveyor({ game, paused, onResolve, help, saving, saveEr
       <button disabled={empty || paused || !!saveError} onClick={() => setPlaying(!playing)}>{running ? 'Pause belt' : 'Start belt'}</button>
       <label title="Slow gives you more time; Normal is the faster lava version.">Speed <select value={speed} onChange={event => setSpeed(event.target.value)}>
         {Object.keys(SPEEDS).map(value => <option key={value}>{value}</option>)}</select></label>
-    </div><button className="blue" onClick={help} title="The belt pauses while you explore labels, filters, weights and fair testing.">? Learning tips</button></div>
+    </div><button className="secondary" onClick={help} title="The belt pauses while you explore labels, filters, weights and fair testing.">? Learning tips</button></div>
     <div className="mission-strip"><span>{game.summary.resolved}/30 complete</span><span>Score <b>{game.summary.score}</b></span>
       <span>Right <b>{game.summary.correct}</b></span><span>Missed <b>{game.summary.missed}</b></span>
       <span>Streak <b>{game.summary.streak}</b></span><span className="save-indicator">{saving ? `Saving ${saving}…` : '✓ Progress saved'}</span></div>
     <p className="board-instructions">Drag items into a bin before they reach the lava. +10 correct · +0 wrong or missed. Your labels teach the robot.</p>
     <svg ref={svg} className="conveyor-svg" viewBox="0 0 1280 770" aria-label="Animated conveyor above a pixel lava pit and three sorting bins"
       onPointerMove={moveDrag} onPointerUp={release} onPointerCancel={() => { store.read().drag = null; store.publish() }}>
-      <defs><pattern id="floor" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#23346a" /></pattern>
+      <defs><pattern id="floor" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#142a1d" /></pattern>
         <clipPath id="belt-clip"><rect x="530" y="0" width="220" height="470" /></clipPath></defs>
-      <rect width="1280" height="770" fill="#1d2b53" /><rect width="1280" height="770" fill="url(#floor)" />
+      <rect width="1280" height="770" fill="#080e0a" /><rect width="1280" height="770" fill="url(#floor)" />
       <rect x="514" width="252" height="470" fill="#c2c3c7" stroke="#5f574f" strokeWidth="4" />
       <rect x="530" width="220" height="470" fill="#2b2b31" />
       <g clipPath="url(#belt-clip)">{Array.from({ length: 18 }, (_, i) => <path key={i} d={`M534 ${i * 30 + w.treads - 30} H746`} stroke="#46464f" strokeWidth="3" />)}</g>
@@ -119,17 +119,17 @@ export default function Conveyor({ game, paused, onResolve, help, saving, saveEr
       <text x="800" y="487" fill="#ffec27" fontSize="16">← LAVA PIT!</text><text x="800" y="514" fill="#ffccaa" fontSize="13">Save the practice examples!</text>
       <g transform="translate(200 85)" className="pixel-robot"><path d="M0 0h120v90H0zM20 90h80v50H20z" fill="#5f574f" stroke="#c2c3c7" strokeWidth="6" />
         <rect x="20" y="24" width="22" height="22" fill="#00e436" /><rect x="78" y="24" width="22" height="22" fill="#00e436" />
-        <path d="M30 68h60M60 0v-20h16" stroke="#ffec27" strokeWidth="6" /></g>
+        <path d="M30 68h60M60 0v-20h16" stroke="#69f58e" strokeWidth="6" /></g>
       <text x="260" y="267" textAnchor="middle" fill="#00e436" fontSize="21">TEACH THE ROBOT</text>
-      <text x="260" y="300" textAnchor="middle" fill="#83769c" fontSize="15">Your choices become its labels.</text>
+      <text x="260" y="300" textAnchor="middle" fill="#a3b9aa" fontSize="15">Your choices become its labels.</text>
       <text x="1015" y="160" textAnchor="middle" fill="#fff1e8" fontSize="23">{empty ? 'MISSION COMPLETE' : running ? 'KEEP SORTING!' : 'READY WHEN YOU ARE'}</text>
-      <text x="1015" y="200" textAnchor="middle" fill="#83769c" fontSize="16">{empty ? 'See your mission report below.' : `${w.actors.length} items left to help the robot`}</text>
-      {!running && !empty && <text x="1015" y="255" textAnchor="middle" fill="#ffec27" fontSize="16">{paused ? 'LEARNING BREAK' : 'Press START BELT to play'}</text>}
+      <text x="1015" y="200" textAnchor="middle" fill="#a3b9aa" fontSize="16">{empty ? 'See your mission report below.' : `${w.actors.length} items left to help the robot`}</text>
+      {!running && !empty && <text x="1015" y="255" textAnchor="middle" fill="#69f58e" fontSize="16">{paused ? 'LEARNING BREAK' : 'Press START BELT to play'}</text>}
       {[280, 640, 1000].map((cx, i) => <g key={cx} role="button" tabIndex={0} aria-label={`Sort selected item into ${BINS[i]}`}
         onClick={() => chooseBin(i)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); chooseBin(i) } }}>
         <rect x={cx - 142} y="556" width="300" height="200" fill="#000" />
         <rect x={cx - 150} y="548" width="300" height="200" fill={COLORS[i]} stroke={binAt(w.drag?.x, w.drag?.y) === i ? '#ffec27' : '#fff1e8'} strokeWidth="5" />
-        <rect x={cx - 132} y="564" width="264" height="126" fill="#182a3d" stroke="#3c535f" strokeWidth="4" />
+        <rect x={cx - 132} y="564" width="264" height="126" fill="#0a1a10" stroke="#355e41" strokeWidth="4" />
         <text x={cx} y="723" textAnchor="middle" fill="#000" fontSize="22">{BINS[i].toUpperCase()}</text></g>)}
       {w.actors.filter(actor => actor.y > -128).map(actor => {
         const drag = w.drag?.index === actor.index ? w.drag : null

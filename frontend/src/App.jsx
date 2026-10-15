@@ -4,7 +4,18 @@ import Conveyor from './Conveyor'
 import HelpGuide from './HelpGuide'
 import LearningLab from './LearningLab'
 import { BINS } from './gameEngine'
+import bottle from './assets/waste/bottle.png'
+import can from './assets/waste/can.png'
+import newspaper from './assets/waste/newspaper.png'
+import cardboard from './assets/waste/cardboard.png'
+import banana from './assets/waste/banana.png'
+import apple from './assets/waste/apple.png'
 import './App.css'
+
+const homePictures = [
+  ['Plastic bottle', bottle], ['Aluminum can', can], ['Newspaper', newspaper],
+  ['Cardboard box', cardboard], ['Banana peel', banana], ['Apple core', apple],
+]
 
 function useRecorder(id, setGame, setFeedback) {
   const queue = useRef([]), sending = useRef(false)
@@ -99,11 +110,14 @@ export default function App() {
       body: { outcome, chosen_class: chosen, response_ms: Math.min(3_600_000, Math.round(actor.responseMs)), speed } })
   }
   const complete = game?.summary.resolved === 30
-  return <main className="app-shell"><header className="app-header"><div><p className="eyebrow">Recycling lab · lava edition</p><h1>Which w<span>AI</span>ste?</h1></div>
+  return <main className="app-shell"><header className={`app-header ${!game ? 'home-header' : ''}`}><div><p className="eyebrow">Recycling lab · lava edition</p><h1>Which w<span>AI</span>ste?</h1></div>
     {game && <nav className="stage-nav" aria-label="Game stages">{[['sort', '1 · Sort'], ['train', '2 · Train'], ['explore', '3 · Explore']].map(([id, label]) =>
       <button key={id} aria-current={view === id ? 'step' : undefined} disabled={id === 'train' ? !complete : id === 'explore' ? game.training.status !== 'done' : false} onClick={() => setView(id)}>{label}</button>)}</nav>}
     <span className="edition-badge">Play. Label. Learn.</span></header>
-    {!game ? <section className="title-screen pixel-panel"><div className="pixel-logo" aria-hidden="true">▣ ▣ ▣</div><p className="eyebrow">A sorting mission with a real neural network</p><h2>Save the examples.<br />Teach the robot.</h2><p>Sort 30 pixel-art items before they reach the lava. Then train a CNN using your labels and explore what it learned.</p><button className="green start-button" disabled={busy} onClick={newGame}>{busy ? 'Preparing your mission…' : 'Start mission →'}</button>
+    {!game ? <section className="title-screen" aria-labelledby="home-title"><h2 id="home-title">TRASH SORTER</h2><p className="home-tagline">SORT 30 ITEMS · TEACH A NEURAL NETWORK</p>
+      <div className="home-pictures" aria-label="Original waste item illustrations">{homePictures.map(([name, image]) => <figure key={name}><img src={image} alt={name} width="128" height="128" /></figure>)}</div>
+      <p className="press-start">PRESS START</p><button className="green start-button" disabled={busy} onClick={newGame}>{busy ? 'Preparing your mission…' : 'Start mission →'}</button>
+      <p className="home-description">Save items from the lava, label their bins, then watch the robot learn from your choices.</p>
       <p className="data-note">This class activity saves anonymous sorting choices, misses, response times, speed, help topics opened, and training results. No student name or email is requested. Your session code stays in this browser tab.</p></section> : <>
       {recorder.error && <div className="error" role="alert">{recorder.error} <button onClick={recorder.retry}>Retry saving</button><p>The belt is paused. Keep this tab open while reconnecting.</p></div>}
       {pollError && <p role="status" className="education-note">{pollError}</p>}
