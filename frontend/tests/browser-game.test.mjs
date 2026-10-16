@@ -166,6 +166,51 @@ test('digital speed control starts at 0, starts the belt at 1 and pauses it at 0
   assert.equal(container.querySelector('.lava-tile').style.animationPlayState, 'paused')
 })
 
+test('two seconds at speed zero stops the robot and offers an in-place phase restart', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] })
+  let rounds = 0
+  globalThis.fetch = async url => {
+    assert.equal(url, '/api/sessions')
+    rounds++
+    return { ok: true, json: async () => ({ ...structuredClone(game), id: `round-${rounds}` }) }
+  }
+  await mount(App)
+  await click(button('START'))
+  const up = () => container.querySelector('[aria-label="Increase belt speed"]')
+  const down = () => container.querySelector('[aria-label="Decrease belt speed"]')
+  await React.act(async () => context.mock.timers.tick(3000))
+  assert.equal(container.querySelector('.robot-resort'), null)
+  await click(up())
+  await React.act(async () => context.mock.timers.tick(5000))
+  await click(down())
+  await React.act(async () => context.mock.timers.tick(1999))
+  assert.equal(container.querySelector('.robot-idle'), null)
+  assert.equal(container.querySelector('.robot-resort'), null)
+  await click(up())
+  await React.act(async () => context.mock.timers.tick(3000))
+  assert.equal(container.querySelector('.robot-resort'), null)
+  await click(down())
+  await React.act(async () => context.mock.timers.tick(2000))
+  assert.ok(container.querySelector('.robot-idle'))
+  assert.ok(container.querySelector('.robot-resort'))
+  assert.equal(container.querySelector('.robot-restart-prompt [role="img"]').getAttribute('aria-label'), 'would you like to restart your sorting?')
+  assert.equal(button('RESET BELT').disabled, false)
+  await click(up())
+  assert.equal(container.querySelector('.robot-idle'), null)
+  assert.equal(container.querySelector('.robot-resort'), null)
+  assert.equal(container.querySelector('.robot-restart-prompt'), null)
+  await click(down())
+  await React.act(async () => context.mock.timers.tick(2000))
+  await click(button('RESET BELT'))
+  assert.equal(rounds, 2)
+  assert.ok(container.querySelector('.conveyor-svg'))
+  assert.equal(container.querySelector('.title-screen'), null)
+  assert.equal(container.querySelector('.robot-resort'), null)
+  assert.equal(container.querySelector('.robot-idle'), null)
+  assert.equal(container.querySelector('.belt-speed-control [role="img"]').getAttribute('aria-label'), 'Belt speed 0 of 3')
+  assert.deepEqual([...container.querySelectorAll('.bin-item-count')].map(text => text.textContent), ['ITEMS: 0', 'ITEMS: 0', 'ITEMS: 0'])
+})
+
 test('SVG guidance disappears five seconds after starting while item and bin labels remain', async context => {
   context.mock.timers.enable({ apis: ['setTimeout'] })
   const props = { game, paused: false, onResolve: () => {}, help: () => {}, saving: 0 }
@@ -409,11 +454,14 @@ test('help topics are saved and closing the guide resumes a moving game', async 
 test('returning to start clears the active session and displays the landing screen', async () => {
   globalThis.fetch = async url => ({ ok: true, json: async () => url === '/api/sessions' ? structuredClone(game) : {} })
   await mount(App)
+  assert.equal(container.querySelector('.home-robot-layer').getAttribute('aria-hidden'), 'true')
   await click(button('START'))
+  assert.equal(container.querySelector('.home-robot-layer'), null)
   assert.equal(window.sessionStorage.getItem('waiste-session'), game.id)
   await click(button('Return to start'))
   assert.equal(window.sessionStorage.getItem('waiste-session'), null)
   assert.ok(container.querySelector('#home-title'))
+  assert.ok(container.querySelector('.home-robot-layer'))
 })
 
 test('failed action saves pause the belt and retry sends the same pending event', async () => {

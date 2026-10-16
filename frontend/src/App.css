@@ -18,7 +18,31 @@ button[aria-pressed='true'], .stage-nav button[aria-current] { border-color: var
 .stage-nav, .button-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .stage-nav button.stage-ready:not(:disabled) { color: #00e436; border-color: #00e436; animation: start-glow 3s ease-in-out infinite; }
 .home-header .edition-badge { display: none; }
-.title-screen { text-align: center; max-width: 1120px; margin: 4vh auto; padding: clamp(16px, 3vw, 40px); }
+.title-screen { position: relative; isolation: isolate; text-align: center; max-width: 1120px; margin: 4vh auto; padding: clamp(16px, 3vw, 40px); }
+.title-screen > :not(.home-robot-layer) { position: relative; z-index: 1; }
+.home-robot-layer { position: fixed; inset: 16px; z-index: 0; pointer-events: none; overflow: hidden; }
+.home-robot-wander { position: absolute; width: 110px; height: 188px; animation: home-robot-roam 48s linear infinite; }
+.home-robot-bob { animation: robot-bob 3.6s ease-in-out infinite; }
+.home-robot-art { display: block; width: 100%; height: 100%; overflow: visible; }
+.home-robot-facing { transform-origin: 60px 70px; animation: home-robot-turn 48s steps(1) infinite; }
+.home-robot-front { animation: home-robot-front-view 48s steps(1) infinite; }
+.home-robot-side { animation: home-robot-side-view 48s steps(1) infinite; }
+@keyframes home-robot-roam {
+  0%, 100% { left: 8%; top: 12%; }
+  20% { left: calc(100% - 130px); top: 20%; }
+  38% { left: 65%; top: calc(100% - 200px); }
+  58% { left: 12%; top: calc(100% - 210px); }
+  78% { left: 35%; top: 30%; }
+}
+@keyframes home-robot-turn { 0%, 58% { transform: scaleX(1); } 20%, 78% { transform: scaleX(-1); } }
+@keyframes home-robot-front-view { 0%, 18%, 36%, 56%, 76%, 98% { opacity: 1; } 6%, 24%, 42%, 62%, 82% { opacity: 0; } }
+@keyframes home-robot-side-view { 0%, 18%, 36%, 56%, 76%, 98% { opacity: 0; } 6%, 24%, 42%, 62%, 82% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .home-robot-wander { animation: none; left: 8%; top: 12%; }
+  .home-robot-layer :is(.home-robot-bob, .home-robot-facing, .home-robot-front, .home-robot-side, .robot-eye, .robot-hover-line) { animation: none; }
+  .home-robot-front { opacity: 1; }
+  .home-robot-side { opacity: 0; }
+}
 .title-screen h2 { font-size: clamp(34px, 6vw, 70px); color: #00e436; line-height: 1.15; letter-spacing: .04em; text-shadow: 5px 5px #004522; margin: 12px 0 18px; }
 .title-screen .logo-ai { color: #8dd8ff; text-shadow: 0 0 6px #29adff, 0 0 18px #168cff, 0 0 32px #168cff99; }
 .title-screen > p { max-width: 780px; margin: 20px auto; }
@@ -99,6 +123,8 @@ button[aria-pressed='true'], .stage-nav button[aria-current] { border-color: var
 .robot-eye { transform-box: fill-box; transform-origin: center; animation: robot-blink 9s linear infinite; }
 .robot-hover-line { animation: robot-hover-pulse 1.5s ease-in-out infinite both; }
 .game-board:not(.robot-awake) :is(.robot-pacing, .robot-floating, .robot-eye, .robot-hover-line) { animation-play-state: paused; }
+.game-board.robot-idle :is(.robot-pacing, .robot-floating, .robot-eye, .robot-hover-line) { animation-play-state: paused; }
+.robot-resort button { width: 174px; height: 48px; font-size: 23px; font-weight: bold; }
 @keyframes robot-pace { 0%, 5%, 100% { transform: translateY(0); } 45%, 55% { transform: translateY(210px); } 95% { transform: translateY(0); } }
 @keyframes robot-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 @keyframes robot-blink { 0%, 35%, 39%, 73%, 77%, 100% { transform: scaleY(1); } 36.5%, 37.5%, 74.5%, 75.5% { transform: scaleY(.14); } }

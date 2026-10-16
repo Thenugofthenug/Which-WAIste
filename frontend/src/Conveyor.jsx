@@ -26,6 +26,7 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
   const [started, setStarted] = useState(false)
   const [showGuidance, setShowGuidance] = useState(true)
   const [speedLevel, setSpeedLevel] = useState(0)
+  const [pauseSettled, setPauseSettled] = useState(false)
   const [deliveryDone, setDeliveryDone] = useState(false)
   const [selected, setSelected] = useState(null)
   const [binCounts, setBinCounts] = useState(() => BINS.map((_, bin) => game.actions.filter(action => action.outcome === 'sorted' && action.chosen_class === bin).length))
@@ -42,11 +43,20 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
   const running = active && (delivering || (!complete && speedLevel > 0)) && !paused && !saveError
   const robotAwake = (started || complete) && active
   const feedbackVisible = started && feedbackKind !== 'ready'
+  const beltPaused = started && speedLevel === 0 && !complete && active && !paused && !saveError
+  const robotIdle = beltPaused && pauseSettled
 
   function changeSpeed(level) {
+    setPauseSettled(false)
     setSpeedLevel(level)
     if (level > 0) setStarted(true)
   }
+
+  useEffect(() => {
+    if (!beltPaused) return
+    const timer = setTimeout(() => setPauseSettled(true), 2000)
+    return () => clearTimeout(timer)
+  }, [beltPaused])
 
   useLayoutEffect(() => {
     if (!complete) return
@@ -174,7 +184,7 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
   }
   const selectedItem = w.actors.find(item => item.index === selected)
   const empty = !w.actors.length
-  return <section className={`game-board pixel-panel ${running ? 'moving' : ''} ${robotAwake ? 'robot-awake' : ''}`} aria-label="Conveyor sorting game">
+  return <section className={`game-board pixel-panel ${running ? 'moving' : ''} ${robotAwake ? 'robot-awake' : ''} ${robotIdle ? 'robot-idle' : ''}`} aria-label="Conveyor sorting game">
     <div className="board-controls">{stageNavigation}<div className="button-row">
       <button className="secondary" onClick={help} title="The belt pauses while you explore labels, filters, weights and fair testing.">? Learning tips</button>
       <button onClick={onReturnToStart} disabled={saving > 0} title={saving > 0 ? 'Wait for progress to finish saving before returning to start.' : undefined}>Return to start</button>
@@ -251,11 +261,22 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
       {(started || complete) && <g className="robot-hover-lines" stroke="rgb(0, 228, 54)" strokeWidth="5" aria-hidden="true">
         {[80, 56, 32].map((width, index) => <line key={width} className="robot-hover-line" x1={260 - width / 2} x2={260 + width / 2} y1={220 + index * 14} y2={220 + index * 14} style={{ animationDelay: `${index * .2}s` }} />)}
       </g>}
+      {robotIdle && <g className="robot-restart-prompt">
+        <g role="img" aria-label="would you like to restart your sorting?">
+          <path d="M92 6H428V14H436V58H428V66H276V74H268V84H252V74H244V66H92V58H84V14H92Z" fill="#fff1e8" stroke="#c2c3c7" strokeWidth="4" strokeLinejoin="miter" />
+          <text x="260" y="31" textAnchor="middle" fill="#102117" fontSize="20"><tspan x="260">would you like to</tspan><tspan x="260" dy="25">restart your sorting?</tspan></text>
+        </g>
+        <foreignObject className="robot-resort" x="170" y="272" width="180" height="54">
+          <button disabled={busy || !!saving} onClick={onResort}>RESET BELT</button>
+        </foreignObject>
+      </g>}
       </g>
       {complete && robotPhase === 'settled' && <RobotSummary summary={game.summary} saving={saving} />}
       {guidanceVisible && <g>
+      {!robotIdle && <g>
       <text x="260" y="267" textAnchor="middle" fill="#00e436" fontSize="21">RE-CYCLER, NEW HIRE</text>
       <text x="260" y="300" textAnchor="middle" fill="#a3b9aa" fontSize="17"><tspan x="260">I brought in 30 items, </tspan><tspan x="260" dy="24">could you show me where </tspan><tspan x="260" dy="24">to put them?</tspan></text>
+      </g>}
       {!running && !empty && <text className="belt-start-hint" x="848" y="185" textAnchor="middle" fill="#69f58e" fontSize="16">{paused ? 'LEARNING BREAK' : 'Set BELT SPEED to 1 to start'}</text>}
       </g>}
       {[280, 640, 1000].map((cx, i) => <g key={cx} className="sorting-bin" transform={`translate(0 ${binOffset})`} role="button" tabIndex={0} aria-label={`Sort selected item into ${BINS[i]}`}

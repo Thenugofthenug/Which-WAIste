@@ -5,6 +5,7 @@ import HelpGuide from './HelpGuide'
 import LearningLab from './LearningLab'
 import HomePictures from './HomePictures'
 import HomeBins from './HomeBins'
+import HomeRobot from './HomeRobot'
 import { BINS } from './gameEngine'
 import './App.css'
 
@@ -113,7 +114,7 @@ export default function App() {
   const complete = game?.summary.resolved === 30
   const nextStage = view === 'sort' && complete ? 'train' : view === 'train' && game?.training.status === 'done' ? 'explore' : null
   return <main className="app-shell">
-    {!game ? <section className="title-screen" aria-labelledby="home-title"><h2 id="home-title">which w<span className="logo-ai">AI</span>ste?</h2><p className="home-tagline">SORT WASTE * TRAIN ROBOTS * EXPLORE LEARNING</p>
+    {!game ? <section className="title-screen" aria-labelledby="home-title"><HomeRobot /><h2 id="home-title">which w<span className="logo-ai">AI</span>ste?</h2><p className="home-tagline">SORT WASTE * TRAIN ROBOTS * EXPLORE LEARNING</p>
       <HomePictures />
       <button className="green start-button" disabled={busy} onClick={newGame}>{busy ? 'Preparing your mission…' : 'START'}</button>
       <HomeBins />
