@@ -3,6 +3,10 @@ export const COLORS = ['#29adff', '#00e436', '#c2c3c7']
 export const SPEEDS = { SLOW: 2.2 / .03, NORMAL: 3.6 / .03, FAST: 5 / .03 }
 export const EXIT_Y = 486
 
+export function missionReportHeading(summary) {
+  return summary.correct === 30 ? 'Perfect sorting!' : 'Ready to teach your robot?'
+}
+
 // A small external store keeps the animation clock separate from React rendering.
 export function createWorld(actors) {
   const state = { actors, burnt: [], drag: null, treads: 0 }
@@ -29,7 +33,8 @@ export function advanceActors(actors, seconds, speed) {
   return { actors: moving.filter(actor => actor.y < EXIT_Y), missed: moving.filter(actor => actor.y >= EXIT_Y) }
 }
 
-export function binAt(x, y) {
+export function binAt(x, y, offset = 0) {
+  y -= offset
   if (y < 523 || y > 758) return null
   return [280, 640, 1000].findIndex(center => Math.abs(x - center) <= 160) === -1 ? null :
     [280, 640, 1000].findIndex(center => Math.abs(x - center) <= 160)

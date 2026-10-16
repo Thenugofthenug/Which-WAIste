@@ -8,6 +8,8 @@ import HomeBins from './HomeBins'
 import { BINS } from './gameEngine'
 import './App.css'
 
+const CORRECT_FEEDBACK = ['Nice +10', 'GREAT +10', 'SMART +10']
+
 function useRecorder(id, setGame, setFeedback) {
   const queue = useRef([]), sending = useRef(false)
   const [pending, setPending] = useState(0), [error, setError] = useState('')
@@ -29,9 +31,13 @@ function useRecorder(id, setGame, setFeedback) {
             ...current.actions.filter(action => action.index !== event.index),
             { index: event.index, ...event.body, correct: result.correct, expected_class: result.expected_class },
           ] }))
-          setFeedback(event.body.outcome === 'missed' ? 'Oh no! Into the lava. Our robot missed a practice example—catch the next one!' :
-            result.correct ? 'Nice! +10 points. Your label gives the robot a practice example.' :
-              `Check that bin! Most programs put this in ${BINS[result.expected_class]}. Your chosen label still teaches the robot.`)
+          setFeedback({
+            id: `${id}-${event.index}`,
+            kind: event.body.outcome === 'missed' ? 'missed' : result.correct ? 'correct' : 'incorrect',
+            message: event.body.outcome === 'missed' ? 'NOT THE LAVA! RE-CYCLER wont be able to see that item in training.' :
+              result.correct ? CORRECT_FEEDBACK[Math.floor(Math.random() * CORRECT_FEEDBACK.length)] :
+                `${BINS[event.body.chosen_class]}, really? I thought that was ${BINS[result.expected_class]}`,
+          })
         }
         queue.current.shift()
         persist()
@@ -54,7 +60,7 @@ function useRecorder(id, setGame, setFeedback) {
 export default function App() {
   const [game, setGame] = useState(null), [view, setView] = useState('sort')
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [pollError, setPollError] = useState('')
-  const [feedback, setFeedback] = useState(''), [guide, setGuide] = useState(false)
+  const [feedback, setFeedback] = useState(null), [guide, setGuide] = useState(false)
   const recorder = useRecorder(game?.id, setGame, setFeedback)
   const closeGuide = useCallback(() => setGuide(false), [])
   useEffect(() => {
@@ -88,13 +94,13 @@ export default function App() {
     try {
       const value = await api('/sessions', {})
       window.sessionStorage.setItem('waiste-session', value.id)
-      setGame(value); setView('sort'); setFeedback(''); setGuide(false)
+      setGame(value); setView('sort'); setFeedback(null); setGuide(false)
     } catch (err) { setError(err.message) }
     finally { setBusy(false) }
   }
   function returnToStart() {
     window.sessionStorage.removeItem('waiste-session')
-    setGame(null); setView('sort'); setFeedback(''); setGuide(false); setError(''); setPollError('')
+    setGame(null); setView('sort'); setFeedback(null); setGuide(false); setError(''); setPollError('')
   }
   function track(topic) {
     if (game) recorder.enqueue({ type: 'help', path: '/help', body: { event_id: crypto.randomUUID(), topic } })
@@ -105,6 +111,7 @@ export default function App() {
       body: { outcome, chosen_class: chosen, response_ms: Math.min(3_600_000, Math.round(actor.responseMs)), speed } })
   }
   const complete = game?.summary.resolved === 30
+  const nextStage = view === 'sort' && complete ? 'train' : view === 'train' && game?.training.status === 'done' ? 'explore' : null
   return <main className="app-shell">
     {!game ? <section className="title-screen" aria-labelledby="home-title"><h2 id="home-title">which w<span className="logo-ai">AI</span>ste?</h2><p className="home-tagline">SORT WASTE * TRAIN ROBOTS * EXPLORE LEARNING</p>
       <HomePictures />
@@ -114,13 +121,11 @@ export default function App() {
       {recorder.error && <div className="error" role="alert">{recorder.error} <button onClick={recorder.retry}>Retry saving</button><p>The belt is paused. Keep this tab open while reconnecting.</p></div>}
       {pollError && <p role="status" className="education-note">{pollError}</p>}
       <Conveyor key={game.id} game={game} active={view === 'sort'} paused={guide || view !== 'sort'} onResolve={resolve}
+        feedback={feedback?.message || ''} feedbackKind={feedback?.kind || 'ready'} feedbackKey={feedback?.id || 'ready'}
         help={openGuide} onReturnToStart={returnToStart} saving={recorder.pending} saveError={recorder.error}
+        onTrain={() => setView('train')} onResort={newGame} busy={busy}
         stageNavigation={<nav className="stage-nav" aria-label="Game stages">{[['sort', '1 · Sort'], ['train', '2 · Train'], ['explore', '3 · Explore']].map(([id, label]) =>
-          <button key={id} aria-current={view === id ? 'step' : undefined} disabled={id === 'train' ? !complete : id === 'explore' ? game.training.status !== 'done' : false} onClick={() => setView(id)}>{label}</button>)}</nav>} />
-      <div hidden={view !== 'sort'}>
-        <p className="feedback" role="status">{feedback || 'Press Start belt when you are ready. You can pause or read learning tips anytime.'}</p>
-        {complete && <section className="mission-report pixel-panel"><div><p className="eyebrow">Sorting mission complete</p><h2>{game.summary.correct === 30 ? 'Perfect sorting!' : 'Ready to teach your robot?'}</h2><p>Score {game.summary.score}/300 · Right {game.summary.correct} · Wrong {game.summary.wrong} · Missed {game.summary.missed} · Best streak {game.summary.best_streak}</p><p className="muted">Missed items are excluded. Points are not model accuracy.</p></div>
-          <div className="button-row"><button disabled={!!recorder.pending} className="green" onClick={() => setView('train')}>Teach the robot →</button><button disabled={busy || !!recorder.pending} onClick={newGame}>Play again</button></div></section>}</div>
+          <button key={id} className={nextStage === id ? 'stage-ready' : undefined} aria-current={view === id ? 'step' : undefined} disabled={id === 'train' ? !complete : id === 'explore' ? game.training.status !== 'done' : false} onClick={() => setView(id)}>{label}</button>)}</nav>} />
       {complete && <div hidden={view === 'sort'}><LearningLab key={game.id} game={game} setGame={setGame} view={view} saving={recorder.pending} help={openGuide} /></div>}
     </>}
     {error && <p className="error" role="alert">{error}</p>}
