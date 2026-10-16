@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { api } from './api'
 import { BINS, COLORS } from './gameEngine'
+import HomeRobot from './HomeRobot'
+import EpochFlow from './EpochFlow'
+import DatasetSummary from './DatasetSummary'
 
 const percent = value => `${(value * 100).toFixed(1)}%`
 
@@ -52,7 +55,7 @@ function WeightExperiment() {
     <details><summary>Try this + extra help</summary><p>Make Compost the highest score, then lower it. What happens with a negative weight or a zero response? Recycling and Landfill start at 0.7 and 0.5. Softmax turns the three values into scores adding to 100%.</p></details></section>
 }
 
-export default function LearningLab({ game, setGame, view, saving, help }) {
+export default function LearningLab({ game, setGame, view, saving }) {
   const [epochs, setEpochs] = useState(3), [rate, setRate] = useState(-3)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const [index, setIndex] = useState(0), [step, setStep] = useState(0), [fresh, setFresh] = useState(null)
@@ -72,7 +75,7 @@ export default function LearningLab({ game, setGame, view, saving, help }) {
     catch (err) { setError(err.message) }
     finally { setBusy(false) }
   }
-  if (view === 'explore') return <section className="pixel-panel lab-panel"><div className="section-heading"><div><p className="eyebrow">Mission 3 · Explore the decision</p><h2>What did our robot learn?</h2></div><button onClick={help}>? Field guide</button></div>
+  if (view === 'explore') return <section className="pixel-panel lab-panel" aria-label="Explore"><div className="section-heading"><HomeRobot variant="heading" /></div>
     {!item ? <p>Complete training to look inside the CNN.</p> : <>
       <label>Choose a held-out item <select value={index} onChange={e => { setIndex(Number(e.target.value)); setFresh(null) }}>{results.predictions.map((p, i) => <option key={i} value={i}>{p.name}</option>)}</select></label>
       <div className="explore-grid"><aside className="inset filters-box"><h3>Filters & feature maps</h3><p className="muted">Real responses to {item.name}. Each map is scaled to its own maximum.</p>
@@ -88,14 +91,24 @@ export default function LearningLab({ game, setGame, view, saving, help }) {
         {fresh && <><div className="fresh-item"><img src={fresh.image} alt={fresh.name} /><div><h4>{fresh.name}</h4><Scores values={fresh.probabilities} /><p>Common destination: {fresh.destination}</p></div></div><p>{fresh.has_valid_bin ? 'This drawing was not in the training dataset. Compare its prediction with the common destination.' : 'None of the model’s bins is suitable! It still has to choose one. Confidence does not create a missing category.'}</p><Network viz={fresh.viz} /></>}</section></div>
     </>}{error && <p className="error" role="alert">{error}</p>}</section>
 
-  return <section className="pixel-panel lab-panel"><div className="section-heading"><div><p className="eyebrow">Mission 2 · Teach the robot</p><h2>Did our robot improve?</h2></div><button onClick={help}>? Field guide</button></div>
+  return <section className="pixel-panel lab-panel training-panel" aria-label="Train">
+    <div className="lab-top-padding">
+      <DatasetSummary game={game} />
+      <p className="lab-epoch-note"><span>*Visualization of a Neural Network gong through it's EPOCHS * Each  EPOCH allows for the ROBOT to see every item once*</span></p>
+    </div>
+    <div className="section-heading training-heading"><div className="robot-desk-stage">
+    <HomeRobot variant="heading" />
+    <svg className="robot-table" viewBox="0 0 180 32" aria-hidden="true">
+      <path d="M8 8H24V30H16V16H8ZM156 8H172V16H164V30H156Z" fill="#5f574f" stroke="#c2c3c7" strokeWidth="2" />
+      <path d="M8 1H172V5H179V12H1V5H8Z" fill="#5f574f" stroke="#c2c3c7" strokeWidth="2" />
+    </svg>
+  </div>{view === 'train' && <EpochFlow game={game} />}</div>
     <div className="training-grid"><section className="inset training-controls"><h3>Controls</h3>
       <label>Training run <select value={epochs} disabled={busy || training.status === 'running'} onChange={e => setEpochs(Number(e.target.value))}><option value="3">3 epochs · quick run</option><option value="10">10 epochs</option><option value="50">50 epochs · full run</option></select></label>
       <label title="Controls the size of weight updates.">Learning rate: {(10 ** rate).toExponential(1)}<input type="range" min="-4" max="-1" step=".1" value={rate} disabled={training.status === 'running'} onChange={e => setRate(Number(e.target.value))} /></label>
-      <button className="green" disabled={saving || busy || training.status === 'running'} onClick={train}>{training.status === 'running' ? 'Robot is learning…' : results ? 'Train again' : 'Start training'}</button>
-      <p className="status" role="status">{training.status === 'running' ? `Epoch ${training.history.length} / ${training.epochs}` : training.status.toUpperCase()}</p>
-      <p>{game.summary.missed} misses excluded. Split before augmentation.</p>
-      {results && <><p>Train {results.split.train} · Val {results.split.validation} · Test {results.split.test}</p><p className="accuracy-result">{percent(results.before_accuracy)} → {percent(results.test_accuracy)}</p><p>Same held-out test views. Best epoch: {results.best_epoch}.</p></>}
+      <button className="green training-button" disabled={saving || busy || training.status === 'running'} onClick={train}>{training.status === 'running' ? 'Robot is learning…' : training.status === 'done' || results ? 'RE-TRAIN' : 'Start training'}</button>
+      {training.status !== 'done' && <p className="status" role="status">{training.status === 'running' ? `Epoch ${training.history.length} / ${training.epochs}` : training.status.toUpperCase()}</p>}
+      {results && <><p className="accuracy-result">{percent(results.before_accuracy)} → {percent(results.test_accuracy)}</p><p>Same held-out test views. Best epoch: {results.best_epoch}.</p></>}
     </section><div className="graph-grid"><Curve history={training.history} /><Curve history={training.history} loss /></div></div>
     {(error || training.error) && <p className="error" role="alert">{error || training.error}</p>}
     <p className="education-note">Game points and accuracy measure different things. The CNN learns your labels, including incorrect ones. Higher test accuracy is not guaranteed.</p><Network viz={training.probe?.viz || item?.viz} />

@@ -3,6 +3,23 @@ export const COLORS = ['#29adff', '#00e436', '#c2c3c7']
 export const SPEEDS = { SLOW: 2.2 / .03, NORMAL: 3.6 / .03, FAST: 5 / .03 }
 export const EXIT_Y = 486
 
+export function datasetSplitCounts(actions) {
+  const labels = actions.filter(action => action.outcome === 'sorted').map(action => action.chosen_class)
+  const classes = new Set(labels).size
+  // Match the backend: reserve one training item per class, then allocate
+  // validation/test slots from the remaining items, using Python's tie-to-even rounding.
+  const fraction = labels.length / 6
+  const rounded = fraction % 1 === .5 ? Math.round(fraction / 2) * 2 : Math.round(fraction)
+  const target = Math.max(1, rounded)
+  const counts = { train: classes, validation: 0, test: 0 }
+  for (let index = 0; index < labels.length - classes; index++) {
+    if (index % 4 === 1 && counts.validation < target) counts.validation++
+    else if (index % 4 === 3 && counts.test < target) counts.test++
+    else counts.train++
+  }
+  return counts
+}
+
 export function missionReportHeading(summary) {
   return summary.correct === 30 ? 'Perfect sorting!' : 'Ready to teach your robot?'
 }

@@ -3,7 +3,7 @@ import { after, afterEach, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { JSDOM } from 'jsdom'
 import { createServer } from 'vite'
-import { advanceActors, binAt, createWorld, initialActors } from '../src/gameEngine.js'
+import { advanceActors, binAt, createWorld, datasetSplitCounts, initialActors } from '../src/gameEngine.js'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost:5173' })
 globalThis.window = dom.window
@@ -535,10 +535,26 @@ test('TV feedback names incorrect bins and uses each of the three correct respon
   }
 })
 
+test('dataset counts mirror the backend split and exclude lava items', () => {
+  const actions = count => Array.from({ length: count }, (_, index) => ({ outcome: 'sorted', chosen_class: index % 3 }))
+  assert.deepEqual(datasetSplitCounts(actions(30)), { train: 20, validation: 5, test: 5 })
+  assert.deepEqual(datasetSplitCounts([...actions(27), { outcome: 'missed', chosen_class: null }]), { train: 19, validation: 4, test: 4 })
+  assert.deepEqual(datasetSplitCounts(actions(3)), { train: 3, validation: 0, test: 0 })
+  assert.deepEqual(datasetSplitCounts([]), { train: 0, validation: 0, test: 0 })
+})
+
 test('stage navigation stays in board controls across sorting, training and exploration', async () => {
   const completed = structuredClone(game)
   completed.summary.resolved = 30
+  completed.summary.missed = 1
   completed.training.status = 'done'
+  completed.training.results = { split: { train: 3, validation: 0, test: 0 }, predictions: [], before_accuracy: .3, test_accuracy: .7, best_epoch: 1 }
+  completed.actions = [
+    { index: 0, outcome: 'sorted', chosen_class: 2, expected_class: 0 },
+    { index: 1, outcome: 'missed', chosen_class: null },
+    { index: 2, outcome: 'sorted', chosen_class: 1 },
+    { index: 3, outcome: 'sorted', chosen_class: 0 },
+  ]
   globalThis.fetch = async () => ({ ok: true, json: async () => structuredClone(completed) })
   await mount(App)
   await click(button('START'))
@@ -547,10 +563,51 @@ test('stage navigation stays in board controls across sorting, training and expl
   assert.ok(navigation)
   assert.equal(navigation.querySelector('.stage-ready'), button('2 · Train'))
   await click(button('2 · Train'))
+  const controls = container.querySelector('.training-controls')
+  assert.equal(controls.querySelector('button').textContent, 'RE-TRAIN')
+  assert.equal(controls.querySelector('.status'), null)
+  assert.equal(/misses excluded|Split before augmentation|Train \d+ · Val \d+ · Test \d+|DONE/.test(controls.textContent), false)
+  assert.equal(container.querySelector('.lab-panel .section-heading h2'), null)
+  const tokens = [...container.querySelectorAll('.epoch-token')]
+  assert.equal(tokens.length, 6)
+  assert.equal(tokens[0].textContent, 'EPOCH START')
+  assert.equal(tokens.at(-1).textContent, 'EPOCH END')
+  assert.deepEqual(tokens.slice(1, -1).map(token => token.querySelector('[aria-label]').getAttribute('aria-label')), [
+    'Item 1: Item 0, Landfill', 'Item 2: Lava — missed item', 'Item 3: Item 2, Compost', 'Item 4: Item 3, Recycling',
+  ])
+  for (const token of tokens.slice(1, -1)) assert.equal(token.querySelector('text').getAttribute('fill'), '#fff')
+  const playerLabel = tokens[1].querySelector('[aria-label]')
+  assert.equal(playerLabel.querySelector('rect').getAttribute('fill'), '#c2c3c7', 'Uses chosen Landfill even though the guideline is Recycling')
+  assert.ok(playerLabel.querySelector('.bin-symbol'))
+  const lava = tokens[2]
+  assert.equal(lava.querySelector('image'), null)
+  assert.ok(lava.querySelector('.epoch-lava-symbol'))
+  const lavaPositions = lava.querySelector('animateTransform').getAttribute('values').split(';')
+  assert.notEqual(lavaPositions[1], lavaPositions[2], 'Lava entries pass the table without a hold')
+  const sortedTimes = tokens[1].querySelector('animate').getAttribute('keyTimes').split(';').map(Number)
+  const lavaTimes = lava.querySelector('animate').getAttribute('keyTimes').split(';').map(Number)
+  assert.ok(lavaTimes[3] < sortedTimes[3], 'Lava entries leave earlier because they do not pause')
+  const checks = [...container.querySelectorAll('.epoch-item-check')]
+  assert.equal(checks.length, 3, 'Only sorted items receive a checkmark')
+  const tokenArrives = Number.parseFloat(tokens[1].querySelector('animateTransform').getAttribute('begin')) + Number(tokens[1].querySelector('animateTransform').getAttribute('keyTimes').split(';')[1]) * Number.parseFloat(tokens[1].querySelector('animateTransform').getAttribute('dur'))
+  assert.ok(Math.abs(Number.parseFloat(checks[0].querySelector('animate').getAttribute('begin')) - tokenArrives) < .0001)
+  assert.equal(checks[0].getAttribute('fill'), '#00e436')
+  const dataset = container.querySelector('.dataset-summary')
+  assert.ok(dataset.textContent.includes('1 misses lost to lava'))
+  assert.deepEqual([...dataset.querySelectorAll('dt')].map(text => text.textContent), ['TRAIN: 3', 'VALIDATE: 0', 'TEST: 0'])
+  for (const phrase of ['homework', 'practice quiz', 'final exam']) assert.ok(dataset.textContent.includes(phrase))
+  const firstAnimation = tokens[0].querySelector('animateTransform')
+  const positions = firstAnimation.getAttribute('values').split(';')
+  assert.equal(positions[1], positions[2], 'Each item pauses at the robot table')
+  assert.equal(firstAnimation.getAttribute('repeatCount'), 'indefinite')
+  assert.ok(Number.parseFloat(tokens[1].querySelector('animateTransform').getAttribute('begin')) > 0)
+  assert.ok(container.querySelector('.lab-panel .section-heading .heading-robot-layer'))
   assert.equal(navigation.closest('[hidden]'), null)
   assert.equal(button('2 · Train').getAttribute('aria-current'), 'step')
   assert.equal(navigation.querySelector('.stage-ready'), button('3 · Explore'))
   await click(button('3 · Explore'))
+  assert.equal(container.querySelector('.lab-panel .section-heading').textContent, '')
+  assert.ok(container.querySelector('.lab-panel .section-heading .heading-robot-layer'))
   assert.equal(navigation.closest('[hidden]'), null)
   assert.equal(button('3 · Explore').getAttribute('aria-current'), 'step')
   assert.equal(navigation.querySelector('.stage-ready'), null)
