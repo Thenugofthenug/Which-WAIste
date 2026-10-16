@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { advanceActors, BINS, binAt, COLORS, createWorld, initialActors, SPEEDS } from './gameEngine'
 
-export default function Conveyor({ game, paused, onResolve, help, saving, saveError }) {
+export default function Conveyor({ game, paused, onResolve, help, onReturnToStart, saving, saveError }) {
   const [store] = useState(() => createWorld(initialActors(game.items, game.actions)))
   const w = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const callback = useRef(onResolve)
@@ -98,7 +98,10 @@ export default function Conveyor({ game, paused, onResolve, help, saving, saveEr
       <button disabled={empty || paused || !!saveError} onClick={() => setPlaying(!playing)}>{running ? 'Pause belt' : 'Start belt'}</button>
       <label title="Slow gives you more time; Normal is the faster lava version.">Speed <select value={speed} onChange={event => setSpeed(event.target.value)}>
         {Object.keys(SPEEDS).map(value => <option key={value}>{value}</option>)}</select></label>
-    </div><button className="secondary" onClick={help} title="The belt pauses while you explore labels, filters, weights and fair testing.">? Learning tips</button></div>
+    </div><div className="button-row">
+      <button className="secondary" onClick={help} title="The belt pauses while you explore labels, filters, weights and fair testing.">? Learning tips</button>
+      <button onClick={onReturnToStart} disabled={saving > 0} title={saving > 0 ? 'Wait for progress to finish saving before returning to start.' : undefined}>Return to start</button>
+    </div></div>
     <div className="mission-strip"><span>{game.summary.resolved}/30 complete</span><span>Score <b>{game.summary.score}</b></span>
       <span>Right <b>{game.summary.correct}</b></span><span>Missed <b>{game.summary.missed}</b></span>
       <span>Streak <b>{game.summary.streak}</b></span><span className="save-indicator">{saving ? `Saving ${saving}…` : '✓ Progress saved'}</span></div>

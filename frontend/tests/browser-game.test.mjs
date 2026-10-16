@@ -18,6 +18,7 @@ const { createRoot } = await import('react-dom/client')
 const server = await createServer({ root: fileURLToPath(new URL('../', import.meta.url)), server: { middlewareMode: true }, appType: 'custom' })
 const { default: App } = await server.ssrLoadModule('/src/App.jsx')
 const { default: Conveyor } = await server.ssrLoadModule('/src/Conveyor.jsx')
+const { default: HomePictures } = await server.ssrLoadModule('/src/HomePictures.jsx')
 const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII='
 const game = { id: '11111111-1111-4111-8111-111111111111', items: Array.from({ length: 30 }, (_, index) => ({ index, name: 'Item ' + index, image })),
   actions: [], summary: { resolved: 0, correct: 0, wrong: 0, missed: 0, score: 0, streak: 0, best_streak: 0 }, training: { status: 'ready', history: [] } }
@@ -45,6 +46,51 @@ afterEach(async () => {
   window.sessionStorage.clear()
 })
 after(async () => { await server.close(); dom.window.close() })
+
+test('start pictures shuffle in place every 750ms and cover every sorting item without duplicates', async context => {
+  context.mock.timers.enable({ apis: ['setInterval'] })
+  Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+  try {
+    await mount(HomePictures)
+    const names = () => [...container.querySelectorAll('img')].map(img => img.alt)
+    const captions = () => [...container.querySelectorAll('figcaption')].map(caption => caption.textContent)
+    const lastBackground = new Map()
+    function checkBackgrounds() {
+      for (const img of container.querySelectorAll('img')) {
+        const color = img.style.backgroundColor
+        assert.ok(['rgb(16, 87, 16)', 'rgb(29, 94, 145)', 'rgb(60, 65, 66)'].includes(color))
+        assert.notEqual(color, lastBackground.get(img.alt))
+        lastBackground.set(img.alt, color)
+      }
+    }
+    const first = names()
+    checkBackgrounds()
+    assert.equal(first.length, 6)
+    assert.deepEqual(captions(), first)
+    assert.equal(container.querySelector('button'), null)
+    await React.act(async () => context.mock.timers.tick(749))
+    assert.deepEqual(names(), first)
+    await React.act(async () => context.mock.timers.tick(1))
+    assert.notDeepEqual(names(), first)
+    checkBackgrounds()
+    assert.equal(new Set([...first, ...names()]).size, 12)
+    let previous = names()
+    for (let i = 0; i < 10; i++) {
+      await React.act(async () => context.mock.timers.tick(750))
+      assert.equal(new Set(names()).size, 6)
+      assert.deepEqual(captions(), names())
+      checkBackgrounds()
+      assert.ok(names().every(name => !previous.includes(name)))
+      previous = names()
+    }
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+    const hidden = names()
+    await React.act(async () => context.mock.timers.tick(1000))
+    assert.deepEqual(names(), hidden)
+  } finally {
+    delete document.hidden
+  }
+})
 
 test('belt never stops for missed items; restoring excludes resolved items', () => {
   const actors = initialActors(game.items, [{ index: 0 }])
@@ -94,7 +140,8 @@ test('help topics are saved and closing the guide resumes a moving game', async 
     return { ok: true, json: async () => url === '/api/sessions' ? structuredClone(game) : { saved: true } }
   }
   await mount(App)
-  await click(button('Start mission →'))
+  await click(button('START'))
+  await click(button('Got it — let’s sort →'))
   await click(button('Start belt'))
   assert.equal(frames.size, 1)
   await click(button('? Learning tips'))
@@ -108,6 +155,17 @@ test('help topics are saved and closing the guide resumes a moving game', async 
   assert.equal(new Set(calls.filter(([url]) => url.endsWith('/help')).map(([, body]) => body.event_id)).size, 2)
 })
 
+test('returning to start clears the active session and displays the landing screen', async () => {
+  globalThis.fetch = async url => ({ ok: true, json: async () => url === '/api/sessions' ? structuredClone(game) : {} })
+  await mount(App)
+  await click(button('START'))
+  await click(button('Got it — let’s sort →'))
+  assert.equal(window.sessionStorage.getItem('waiste-session'), game.id)
+  await click(button('Return to start'))
+  assert.equal(window.sessionStorage.getItem('waiste-session'), null)
+  assert.ok(container.querySelector('#home-title'))
+})
+
 test('failed action saves pause the belt and retry sends the same pending event', async () => {
   let fail = true
   const saved = []
@@ -119,7 +177,8 @@ test('failed action saves pause the belt and retry sends the same pending event'
       summary: { ...game.summary, resolved: 1, missed: 1 } }) }
   }
   await mount(App)
-  await click(button('Start mission →'))
+  await click(button('START'))
+  await click(button('Got it — let’s sort →'))
   await click(button('Start belt'))
   await drive(49)
   assert.match(container.querySelector('[role="alert"]').textContent, /Offline/)
@@ -133,4 +192,38 @@ test('failed action saves pause the belt and retry sends the same pending event'
   assert.deepEqual(saved[0][1], queued[0].body)
   assert.equal(JSON.parse(window.sessionStorage.getItem(`waiste-events-${game.id}`)).length, 0)
   assert.equal(frames.size, 1)
+})
+
+
+test('new missions explain the learning flow and keep the conveyor paused until dismissed', async () => {
+  globalThis.fetch = async () => ({ ok: true, json: async () => structuredClone(game) })
+  await mount(App)
+  await click(button('START'))
+  const intro = container.querySelector('[role="dialog"]')
+  assert.ok(intro)
+  assert.match(intro.textContent, /Phase 1: the sorting room - data collection/)
+  assert.match(intro.textContent, /click and drag items off of the conveyor belt/)
+  assert.match(intro.textContent, /will not be used in the data set/)
+  assert.match(intro.textContent, /creating the answer key for the robot to learn from/)
+  assert.match(intro.textContent, /30 items to sort before we can move to phase 2: training the robot/)
+  assert.equal(document.activeElement, button('Got it — let’s sort →'))
+  assert.equal(button('Start belt').disabled, true)
+  assert.ok(container.querySelector('[inert]'))
+  assert.equal(frames.size, 0)
+  await React.act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true })))
+  assert.equal(document.activeElement, button('Got it — let’s sort →'))
+  await click(button('Got it — let’s sort →'))
+  assert.equal(container.querySelector('[role="dialog"]'), null)
+  assert.equal(container.querySelector('[inert]'), null)
+  assert.equal(document.activeElement, button('Start belt'))
+  assert.equal(frames.size, 0)
+  await click(button('Start belt'))
+  assert.equal(frames.size, 1)
+  await click(button('Return to start'))
+  await click(button('START'))
+  assert.ok(container.querySelector('[role="dialog"]'))
+  await React.act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+  assert.equal(container.querySelector('[role="dialog"]'), null)
+  assert.equal(frames.size, 0)
+  assert.equal(document.body.style.overflow, '')
 })
