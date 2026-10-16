@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { advanceActors, BINS, binAt, COLORS, createWorld, initialActors, SPEEDS } from './gameEngine'
 
-export default function Conveyor({ game, paused, onResolve, help, onReturnToStart, saving, saveError }) {
+export default function Conveyor({ game, paused, onResolve, help, onReturnToStart, saving, saveError, stageNavigation, active = true }) {
   const [store] = useState(() => createWorld(initialActors(game.items, game.actions)))
   const w = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const callback = useRef(onResolve)
@@ -94,18 +94,18 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
   const selectedItem = w.actors.find(item => item.index === selected)
   const empty = !w.actors.length
   return <section className={`game-board pixel-panel ${running ? 'moving' : ''}`} aria-label="Conveyor sorting game">
-    <div className="board-controls"><div className="button-row">
+    <div className="board-controls"><div className="button-row" hidden={!active}>
       <button disabled={empty || paused || !!saveError} onClick={() => setPlaying(!playing)}>{running ? 'Pause belt' : 'Start belt'}</button>
       <label title="Slow gives you more time; Normal is the faster lava version.">Speed <select value={speed} onChange={event => setSpeed(event.target.value)}>
         {Object.keys(SPEEDS).map(value => <option key={value}>{value}</option>)}</select></label>
-    </div><div className="button-row">
+    </div>{stageNavigation}<div className="button-row">
       <button className="secondary" onClick={help} title="The belt pauses while you explore labels, filters, weights and fair testing.">? Learning tips</button>
       <button onClick={onReturnToStart} disabled={saving > 0} title={saving > 0 ? 'Wait for progress to finish saving before returning to start.' : undefined}>Return to start</button>
     </div></div>
+    <div hidden={!active}>
     <div className="mission-strip"><span>{game.summary.resolved}/30 complete</span><span>Score <b>{game.summary.score}</b></span>
       <span>Right <b>{game.summary.correct}</b></span><span>Missed <b>{game.summary.missed}</b></span>
       <span>Streak <b>{game.summary.streak}</b></span><span className="save-indicator">{saving ? `Saving ${saving}…` : '✓ Progress saved'}</span></div>
-    <p className="board-instructions">Drag items into a bin before they reach the lava. +10 correct · +0 wrong or missed. Your labels teach the robot.</p>
     <svg ref={svg} className="conveyor-svg" viewBox="0 0 1280 770" aria-label="Animated conveyor above a pixel lava pit and three sorting bins"
       onPointerMove={moveDrag} onPointerUp={release} onPointerCancel={() => { store.read().drag = null; store.publish() }}>
       <defs><pattern id="floor" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#142a1d" /></pattern>
@@ -150,5 +150,6 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
     </svg>
     <div className="keyboard-controls"><span>{selectedItem ? `Selected: ${selectedItem.name}` : 'Keyboard: Tab to an item, press Enter, then choose its bin.'}</span>
       <div className="button-row">{BINS.map((bin, i) => <button key={bin} disabled={!running || !selectedItem} onClick={() => chooseBin(i)}>{bin}</button>)}</div></div>
+    </div>
   </section>
 }

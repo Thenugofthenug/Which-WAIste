@@ -41,8 +41,7 @@ button[aria-pressed='true'], .stage-nav button[aria-current] { border-color: var
 .mission-strip { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 12px 18px; background: #070d09; border-top: 2px solid var(--line); border-bottom: 2px solid var(--line); font-size: 13px; }
 .mission-strip b { color: #00e436; }
 .save-indicator { color: var(--muted); font-size: 11px; }
-.board-instructions { font-size: 12px; margin: 8px 16px; color: var(--muted); }
-.conveyor-svg { display: block; width: 100%; max-height: 64vh; touch-action: none; user-select: none; }
+.conveyor-svg { display: block; width: calc(100% * 2 / 3); height: auto; aspect-ratio: 1280 / 770; margin-inline: auto; touch-action: none; user-select: none; }
 .conveyor-svg [role='button'] { cursor: grab; }
 .conveyor-svg [role='button']:active { cursor: grabbing; }
 .lava-tile { animation: lava 1s steps(1) infinite; }
@@ -90,28 +89,6 @@ th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 10px; 
 .error { padding: 14px 18px; background: #4b1632; border: 2px solid #ff004d; margin: 16px 0; font-size: 13px; }
 footer { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 10px; color: var(--muted); padding: 22px 0 0; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 100; background: #000b; padding: 28px; display: grid; place-items: center; }
-.mission-intro { width: min(100%, 920px); max-height: 90vh; max-height: 90dvh; overflow-y: auto; padding: clamp(20px, 3vw, 36px); border-color: #008751; font-family: Arial, Helvetica, sans-serif; }
-.mission-intro h2 { color: var(--text); font-size: clamp(30px, 4vw, 40px); line-height: 1.2; margin: 8px 0 24px; }
-.mission-intro-subtitle { display: block; color: var(--muted); font-size: 22px; font-weight: normal; margin-top: 8px; }
-.mission-intro p { font-size: clamp(18px, 2vw, 20px); line-height: 1.6; }
-.mission-intro .mission-intro-kicker { color: var(--accent); font-size: 16px; font-weight: bold; margin: 0 0 12px; }
-.mission-intro-cards { display: grid; gap: 16px; }
-.mission-intro-card { padding: clamp(16px, 2.5vw, 24px); background: var(--inset); border: 1px solid var(--line); border-left: 5px solid #8dd8ff; }
-.mission-intro-card h3 { margin: 0 0 10px; font-size: 22px; line-height: 1.3; }
-.mission-intro-card p { margin: 0; }
-.mission-intro-lava { border-left-color: #ffcc80; }
-.mission-intro-teach { border-left-color: #d8b4fe; }
-.mission-intro .intro-action, .mission-intro-sort h3 { color: #8dd8ff; }
-.mission-intro .intro-warning, .mission-intro-lava h3 { color: #ffcc80; }
-.mission-intro .intro-learning, .mission-intro-teach h3 { color: #d8b4fe; }
-.intro-bins { display: flex; flex-wrap: wrap; gap: 10px; list-style: none; padding: 0; margin: 16px 0 0; font-size: 18px; font-weight: bold; }
-.intro-bins li { padding: 8px 14px; border: 2px solid currentColor; background: #101e17; color: #8dd8ff; }
-.intro-bins li:nth-child(2) { color: #69f58e; }
-.intro-bins li:nth-child(3) { color: #e0e1e5; }
-.mission-intro-next { padding: 20px 0; margin: 0; }
-.mission-intro-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; border-top: 1px solid var(--line); padding-top: 20px; }
-.mission-intro-footer p { flex: 1 1 300px; color: var(--muted); margin: 0; font-size: 18px; }
-.mission-intro-footer button { padding: 16px 24px; min-height: 52px; font-size: 20px; font-weight: bold; }
 .field-guide { width: min(100%, 980px); max-height: 90vh; overflow: auto; padding: 24px; }.field-guide header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .guide-grid { display: grid; grid-template-columns: 250px 1fr; gap: 24px; margin-top: 20px; }.guide-grid nav { display: grid; gap: 8px; }.guide-grid nav button { text-align: left; font-size: 11px; padding: 10px; }.guide-grid article { padding: 22px; background: var(--inset); border: 2px solid var(--line); }.guide-grid article p { font-size: 14px; line-height: 1.9; }
 @media (max-width: 1000px) { .app-shell { padding: 16px; }.edition-badge { display: none; }.training-grid, .explore-grid, .try-grid { grid-template-columns: 1fr; }.feature-layers { grid-template-columns: repeat(4, 1fr); }.training-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }.mission-report { flex-wrap: wrap; } }

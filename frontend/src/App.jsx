@@ -3,7 +3,6 @@ import { api } from './api'
 import Conveyor from './Conveyor'
 import HelpGuide from './HelpGuide'
 import LearningLab from './LearningLab'
-import MissionIntro from './MissionIntro'
 import HomePictures from './HomePictures'
 import HomeBins from './HomeBins'
 import { BINS } from './gameEngine'
@@ -56,10 +55,8 @@ export default function App() {
   const [game, setGame] = useState(null), [view, setView] = useState('sort')
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [pollError, setPollError] = useState('')
   const [feedback, setFeedback] = useState(''), [guide, setGuide] = useState(false)
-  const [intro, setIntro] = useState(false)
   const recorder = useRecorder(game?.id, setGame, setFeedback)
   const closeGuide = useCallback(() => setGuide(false), [])
-  const closeIntro = useCallback(() => setIntro(false), [])
   useEffect(() => {
     const id = window.sessionStorage.getItem('waiste-session')
     if (!id) return
@@ -91,13 +88,13 @@ export default function App() {
     try {
       const value = await api('/sessions', {})
       window.sessionStorage.setItem('waiste-session', value.id)
-      setGame(value); setView('sort'); setFeedback(''); setGuide(false); setIntro(true)
+      setGame(value); setView('sort'); setFeedback(''); setGuide(false)
     } catch (err) { setError(err.message) }
     finally { setBusy(false) }
   }
   function returnToStart() {
     window.sessionStorage.removeItem('waiste-session')
-    setGame(null); setView('sort'); setFeedback(''); setGuide(false); setIntro(false); setError(''); setPollError('')
+    setGame(null); setView('sort'); setFeedback(''); setGuide(false); setError(''); setPollError('')
   }
   function track(topic) {
     if (game) recorder.enqueue({ type: 'help', path: '/help', body: { event_id: crypto.randomUUID(), topic } })
@@ -108,10 +105,7 @@ export default function App() {
       body: { outcome, chosen_class: chosen, response_ms: Math.min(3_600_000, Math.round(actor.responseMs)), speed } })
   }
   const complete = game?.summary.resolved === 30
-  return <main className="app-shell"><div inert={intro ? true : undefined}>{game && <header className="app-header"><div><p className="eyebrow">Recycling lab · lava edition</p><h1>Which w<span>AI</span>ste?</h1></div>
-    {game && <nav className="stage-nav" aria-label="Game stages">{[['sort', '1 · Sort'], ['train', '2 · Train'], ['explore', '3 · Explore']].map(([id, label]) =>
-      <button key={id} aria-current={view === id ? 'step' : undefined} disabled={id === 'train' ? !complete : id === 'explore' ? game.training.status !== 'done' : false} onClick={() => setView(id)}>{label}</button>)}</nav>}
-    <span className="edition-badge">Play. Label. Learn.</span></header>}
+  return <main className="app-shell">
     {!game ? <section className="title-screen" aria-labelledby="home-title"><h2 id="home-title">which w<span className="logo-ai">AI</span>ste?</h2><p className="home-tagline">SORT WASTE * TRAIN ROBOTS * EXPLORE LEARNING</p>
       <HomePictures />
       <button className="green start-button" disabled={busy} onClick={newGame}>{busy ? 'Preparing your mission…' : 'START'}</button>
@@ -119,17 +113,17 @@ export default function App() {
       </section> : <>
       {recorder.error && <div className="error" role="alert">{recorder.error} <button onClick={recorder.retry}>Retry saving</button><p>The belt is paused. Keep this tab open while reconnecting.</p></div>}
       {pollError && <p role="status" className="education-note">{pollError}</p>}
-      <div hidden={view !== 'sort'}><Conveyor key={game.id} game={game} paused={intro || guide || view !== 'sort'} onResolve={resolve}
-        help={openGuide} onReturnToStart={returnToStart} saving={recorder.pending} saveError={recorder.error} />
+      <Conveyor key={game.id} game={game} active={view === 'sort'} paused={guide || view !== 'sort'} onResolve={resolve}
+        help={openGuide} onReturnToStart={returnToStart} saving={recorder.pending} saveError={recorder.error}
+        stageNavigation={<nav className="stage-nav" aria-label="Game stages">{[['sort', '1 · Sort'], ['train', '2 · Train'], ['explore', '3 · Explore']].map(([id, label]) =>
+          <button key={id} aria-current={view === id ? 'step' : undefined} disabled={id === 'train' ? !complete : id === 'explore' ? game.training.status !== 'done' : false} onClick={() => setView(id)}>{label}</button>)}</nav>} />
+      <div hidden={view !== 'sort'}>
         <p className="feedback" role="status">{feedback || 'Press Start belt when you are ready. You can pause or read learning tips anytime.'}</p>
         {complete && <section className="mission-report pixel-panel"><div><p className="eyebrow">Sorting mission complete</p><h2>{game.summary.correct === 30 ? 'Perfect sorting!' : 'Ready to teach your robot?'}</h2><p>Score {game.summary.score}/300 · Right {game.summary.correct} · Wrong {game.summary.wrong} · Missed {game.summary.missed} · Best streak {game.summary.best_streak}</p><p className="muted">Missed items are excluded. Points are not model accuracy.</p></div>
           <div className="button-row"><button disabled={!!recorder.pending} className="green" onClick={() => setView('train')}>Teach the robot →</button><button disabled={busy || !!recorder.pending} onClick={newGame}>Play again</button></div></section>}</div>
       {complete && <div hidden={view === 'sort'}><LearningLab key={game.id} game={game} setGame={setGame} view={view} saving={recorder.pending} help={openGuide} /></div>}
-      <footer><span>Anonymous session · {game.id.slice(0, 8)}</span><span>Progress and help-topic opens are saved for the class study.</span></footer>
     </>}
     {error && <p className="error" role="alert">{error}</p>}
-    </div>
-    {intro && <MissionIntro close={closeIntro} />}
     {guide && <HelpGuide close={closeGuide} track={track} />}
   </main>
 }
