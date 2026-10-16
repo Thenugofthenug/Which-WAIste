@@ -70,6 +70,13 @@ class WebTests(unittest.TestCase):
             self.assertEqual(db.scalar(select(func.count()).select_from(SortAction)), 3)
             self.assertIsNone(db.get(SortAction, (self.game['id'], 2)).chosen_class)
 
+    def test_saved_actions_restore_in_the_order_items_were_resolved(self):
+        self.send(3, 0)
+        self.send(1, outcome='missed')
+        self.send(0, 2)
+        restored = self.client.get(self.path).json()
+        self.assertEqual([action['index'] for action in restored['actions']], [3, 1, 0])
+
     def test_help_topic_tracking_is_idempotent_and_survives_restart(self):
         event = {'event_id': str(uuid4()), 'topic': 'filters'}
         self.assertEqual(self.client.post(self.path + '/help', json=event).status_code, 201)

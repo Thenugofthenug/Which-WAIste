@@ -91,7 +91,7 @@ def create_app(database_url=None):
         return game
 
     def actions_for(db, game_id):
-        return list(db.scalars(select(SortAction).where(SortAction.session_id == str(game_id))))
+        return list(db.scalars(select(SortAction).where(SortAction.session_id == str(game_id)).order_by(SortAction.order)))
 
     @app.get('/api/health')
     def health(db=Depends(connection)):

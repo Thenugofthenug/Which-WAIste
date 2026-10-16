@@ -110,6 +110,103 @@ test('belt never stops for missed items; restoring excludes resolved items', () 
   assert.equal(store.getSnapshot().actors.length, 0)
 })
 
+test('SVG guidance disappears five seconds after starting while item and bin labels remain', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] })
+  const props = { game, paused: false, onResolve: () => {}, help: () => {}, saving: 0 }
+  await mount(Conveyor, props)
+  const svg = () => container.querySelector('.conveyor-svg')
+  await React.act(async () => context.mock.timers.tick(6000))
+  assert.ok(svg().querySelector('.lava-arrow'))
+  assert.equal(svg().querySelector('.robot-hover-lines'), null)
+  await click(button('Start belt'))
+  await React.act(async () => context.mock.timers.tick(4999))
+  assert.match(svg().textContent, /RE-CYCLER, NEW HIRE/)
+  assert.ok(svg().querySelector('.lava-arrow'))
+  await React.act(async () => context.mock.timers.tick(1))
+  assert.equal(svg().querySelector('.lava-arrow'), null)
+  assert.deepEqual([...svg().querySelectorAll('text')].map(text => text.textContent), ['ITEMS: 0', 'RECYCLING', 'ITEMS: 0', 'COMPOST', 'ITEMS: 0', 'LANDFILL', 'Item 0'])
+  assert.ok(svg().querySelector('.pixel-robot'))
+  assert.ok(svg().querySelector('.robot-floating'))
+  assert.ok(svg().querySelector('.robot-pacing'))
+  assert.equal(svg().querySelectorAll('.robot-eye').length, 2)
+  assert.equal(svg().querySelectorAll('.robot-foot').length, 0)
+  const hoverLines = [...svg().querySelectorAll('.robot-hover-line')]
+  assert.equal(hoverLines.length, 3)
+  assert.equal(svg().querySelector('.robot-hover-lines').getAttribute('stroke'), 'rgb(0, 228, 54)')
+  assert.deepEqual(hoverLines.map(line => Number(line.getAttribute('x2')) - Number(line.getAttribute('x1'))), [80, 56, 32])
+  await click(button('Pause belt'))
+  await click(button('Start belt'))
+  assert.equal(svg().querySelector('.lava-arrow'), null)
+  await React.act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Conveyor, { ...props, key: 'new-round' }))))
+  assert.ok(svg().querySelector('.lava-arrow'))
+  assert.match(svg().textContent, /RE-CYCLER, NEW HIRE/)
+  assert.equal(svg().querySelector('.robot-floating'), null)
+})
+
+test('bin counters count each drop immediately, replay its symbol, and restore saved choices', async () => {
+  const props = { game, paused: false, onResolve: () => {}, help: () => {}, saving: 0 }
+  await mount(Conveyor, props)
+  const counts = () => [...container.querySelectorAll('.bin-item-count')].map(text => text.textContent)
+  const select = async index => React.act(async () => container.querySelector(`[aria-label="Select Item ${index}"]`).dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  assert.deepEqual(counts(), ['ITEMS: 0', 'ITEMS: 0', 'ITEMS: 0'])
+  assert.equal(container.querySelector('.bin-sort-logo'), null)
+  await click(button('Start belt'))
+  await select(0)
+  await click(button('Recycling'))
+  assert.deepEqual(counts(), ['ITEMS: 1', 'ITEMS: 0', 'ITEMS: 0'])
+  const firstLogo = container.querySelector('.bin-sort-logo')
+  assert.ok(firstLogo)
+  await drive(20)
+  await select(1)
+  await click(button('Recycling'))
+  assert.deepEqual(counts(), ['ITEMS: 2', 'ITEMS: 0', 'ITEMS: 0'])
+  assert.notEqual(container.querySelector('.bin-sort-logo'), firstLogo)
+  await drive(20)
+  await select(2)
+  await click(button('Compost'))
+  assert.deepEqual(counts(), ['ITEMS: 2', 'ITEMS: 1', 'ITEMS: 0'])
+  await drive(60)
+  assert.deepEqual(counts(), ['ITEMS: 2', 'ITEMS: 1', 'ITEMS: 0'])
+  const restored = { ...game, actions: [
+    { index: 0, outcome: 'sorted', chosen_class: 0 },
+    { index: 1, outcome: 'sorted', chosen_class: 2 },
+    { index: 2, outcome: 'missed', chosen_class: null },
+  ] }
+  await React.act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Conveyor, { ...props, game: restored, key: 'restored' }))))
+  assert.deepEqual(counts(), ['ITEMS: 1', 'ITEMS: 0', 'ITEMS: 1'])
+  assert.equal(container.querySelector('.bin-sort-logo'), null)
+})
+
+test('memory records pictures and outcomes, then scrolls after four entries and restores all 30', async () => {
+  const saved = [
+    { index: 2, outcome: 'sorted', chosen_class: 0 },
+    { index: 0, outcome: 'missed', chosen_class: null },
+    { index: 1, outcome: 'sorted', chosen_class: 1 },
+    { index: 3, outcome: 'sorted', chosen_class: 2 },
+  ]
+  const props = { game: { ...game, actions: saved }, paused: false, onResolve: () => {}, help: () => {}, saving: 0 }
+  await mount(Conveyor, props)
+  const table = () => container.querySelector('.memory-table')
+  const viewport = () => container.querySelector('.memory-scroll')
+  assert.equal(container.querySelector('.memory-panel h2').textContent, 'MEMORY')
+  assert.deepEqual([...table().querySelectorAll('thead th')].map(th => th.textContent), ['#', 'ITEM', 'BIN'])
+  assert.deepEqual([...table().querySelectorAll('tbody img')].map(img => img.alt), ['Item 2', 'Item 0', 'Item 1', 'Item 3'])
+  assert.ok(table().querySelector('.memory-flame'))
+  assert.equal(table().querySelectorAll('.bin-symbol').length, 3)
+  assert.equal(viewport().scrollTop, 0)
+  await click(button('Start belt'))
+  await React.act(async () => container.querySelector('[aria-label="Select Item 4"]').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  await click(button('Recycling'))
+  assert.equal(table().querySelectorAll('.memory-row').length, 5)
+  assert.equal(viewport().scrollTop, 48)
+  assert.equal(table().querySelector('.memory-row:last-child th').textContent, '5')
+  const full = { ...game, actions: game.items.map(item => ({ index: item.index, outcome: 'sorted', chosen_class: item.index % 3 })) }
+  await React.act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Conveyor, { ...props, game: full, key: 'full' }))))
+  assert.equal(table().querySelectorAll('.memory-row').length, 30)
+  assert.equal(table().querySelector('.memory-row:last-child th').textContent, '30')
+  assert.equal(viewport().scrollTop, 26 * 48)
+})
+
 test('moving items fall into lava exactly once and successful drag selects the correct bin', async () => {
   const actions = []
   await mount(Conveyor, { game, paused: false, onResolve: (...args) => actions.push(args), help: () => {}, saving: 0 })
