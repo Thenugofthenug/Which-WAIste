@@ -96,6 +96,33 @@ class ConveyorTests(unittest.TestCase):
         self.assertGreater(item.y, start)
         self.assertIsNone(self.app.items[0].label)
 
+    def test_number_keys_sort_the_front_item(self):
+        for _ in range(2):
+            self.game._spawn()
+        front, back = self.game.belt
+        front.y, back.y = 300, 50
+        self.root.event_generate('<KeyPress-2>')
+        self.root.update()
+        self.assertEqual(self.app.items[front.index].label, 1)       # 2 = Compost
+        self.assertIsNone(self.app.items[back.index].label)
+        self.game._key_sort(2)                                        # 3 = Landfill
+        self.assertEqual(self.app.items[back.index].label, 2)
+        self.assertEqual(self.game.sorted, 2)
+
+    def test_miss_pauses_with_help_and_can_slow_down(self):
+        self.game._spawn()
+        item = self.game.belt[0]
+        item.y = STOP_Y
+        self.game._tick()
+        self.assertTrue(self.game.paused)
+        self.assertIsNotNone(self.game.miss_box)
+        self.assertIn('/29', self.game.count_lbl.cget('text'))          # the total shrinks
+        self.game._key_sort(0)                                        # keys wait while paused
+        self.assertEqual(self.game.sorted, 0)
+        self.game._close_miss_help('SLOW')
+        self.assertFalse(self.game.paused)
+        self.assertEqual(self.game.speed.get(), 'SLOW')
+
     def test_all_missed_round_finishes_and_lab_offers_replay(self):
         for _ in self.app.items:
             self.game._spawn()

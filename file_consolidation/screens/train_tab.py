@@ -32,6 +32,7 @@ class TrainTab(RetroFrame):
         self.probe_idx = lab.val_idx[0]
         self.history = {"epoch": [], "train_acc": [], "val_acc": []}
 
+        self._build_action_bar()             # reserved first, so a short window can't cut it off
         top = tk.Frame(self, bg=self.cget("bg"))
         top.pack(fill="x")
         self._build_controls(top)
@@ -66,8 +67,18 @@ class TrainTab(RetroFrame):
         self.epoch_lbl.pack()
         self.status_lbl = self.label(ctrl, "READY.", 10, fg=ACCENT, wraplength=256, justify="left")
         self.status_lbl.pack(anchor="w", pady=6)
-        self.again_btn = self.button(ctrl, "PLAY AGAIN", self.app.new_game, 10, bg=PICO["light_gray"])
-        self.again_btn.pack(fill="x", pady=3)
+
+    def _build_action_bar(self):
+        """TRY NEW ITEMS and PLAY AGAIN, at the bottom right."""
+        bar = tk.Frame(self, bg=self.cget("bg"))
+        bar.pack(side="bottom", fill="x", pady=(8, 0))
+        self.try_btn = self.button(bar, "TRY NEW ITEMS >", lambda: self.lab.show_tab("try"), 13, bg=PICO["green"])
+        self.try_btn.pack(side="right")
+        self.try_btn.set_enabled(False)      # nothing to test until the robot has trained
+        self.again_btn = self.button(bar, "PLAY AGAIN", self.app.new_game, 13, bg=PICO["light_gray"])
+        self.again_btn.pack(side="right", padx=8)
+        self.bar_hint = self.label(bar, "TRAIN THE ROBOT FIRST, THEN TRY IT ON NEW ITEMS.", 10, fg=MUTED)
+        self.bar_hint.pack(side="left")
 
     def _build_accuracy(self, parent):
         outer, body = self.panel(parent, "ACCURACY")
@@ -98,14 +109,15 @@ class TrainTab(RetroFrame):
                         "(BOOSTS THE NEXT NEURON), RED = NEGATIVE (LOWERS IT), BRIGHTER = MORE SIGNAL. CHANGE = HOW "
                         "MUCH EACH BLOCK'S WEIGHTS MOVED LAST EPOCH.", 8, fg=MUTED, wraplength=1240,
                    justify="left").pack(anchor="w", pady=(0, 4))
-        self.view = NetworkView(net)
-        self.view.widget.pack(fill="x")
+        # PREV / NEXT browse the sorted items; placed above the diagram so a short window can't hide them
         row = tk.Frame(net, bg=PANEL)
-        row.pack(fill="x", pady=(6, 0))
+        row.pack(fill="x", pady=(0, 6))
         self.button(row, "< PREV", lambda: self.change_probe(-1), 9, bg=PICO["light_gray"]).pack(side="left")
         self.button(row, "NEXT >", lambda: self.change_probe(1), 9, bg=PICO["light_gray"]).pack(side="left", padx=6)
         self.probe_lbl = self.label(row, "", 10)
         self.probe_lbl.pack(side="left", padx=8)
+        self.view = NetworkView(net)
+        self.view.widget.pack(fill="x")
 
     def _build_log(self):
         outer, body = self.panel(self, "ROBOT LOG - WHAT THE NEURAL NETWORK IS DOING")
@@ -303,6 +315,8 @@ class TrainTab(RetroFrame):
         self.stats.training_finished(self.run_id, self.app.current_lr, len(self.history["epoch"]),
                                      d["stopped"], d["before_test_acc"], d["test_acc"])
         self.lab.on_trained(d["model"])
+        self.try_btn.set_enabled(True)
+        self.bar_hint.config(text="DONE TRAINING? TRY THE ROBOT ON NEW ITEMS, OR PLAY AGAIN.")
         self.change_probe(0)
 
     def narrate_epoch(self, d):

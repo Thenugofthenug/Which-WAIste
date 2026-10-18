@@ -50,8 +50,10 @@ MUTED = PICO["lavender"]
 PIXEL_FONTS = ["Press Start 2P", "Silkscreen", "Pixelify Sans", "VT323"]
 MONO_FONTS = ["Courier New", "Courier", "DejaVu Sans Mono", "Menlo", "Consolas"]
 
-# Anonymous usage statistics (see analytics.py). Saved only in a local SQLite file
-# next to the game: no names, no network. Set to False to turn tracking off.
+# Per-player usage statistics (see analytics.py). Saved only in a local SQLite file
+# next to the game, never sent anywhere. Players enter their first and last name at
+# the start so results can be matched with surveys. Set to False to turn tracking
+# (and the name prompt) off.
 ANALYTICS_ENABLED = True
 STATS_DB_NAME = "whichwaiste_stats.db"
 

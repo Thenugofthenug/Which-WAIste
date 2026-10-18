@@ -8,18 +8,21 @@ Summarize the anonymous usage statistics collected by the game.
     python stats_report.py --csv stats_csv  # also export every table/summary as CSV (opens in Excel/Sheets)
     python stats_report.py --db other.db    # read a different database file
 
+The player_overview table (and player_overview.csv) has one row per player,
+with their name, for matching gameplay to pre/post surveys. Names live only in
+the players table, so de-identifying means editing that one table.
+
 You can also open whichwaiste_stats.db directly in any SQLite tool
 (e.g. DB Browser for SQLite) and run your own queries.
 """
 import argparse
 import csv
-import sqlite3
 import sys
 from pathlib import Path
 
-from analytics import DB_PATH
+from analytics import DB_PATH, open_database
 
-EXPORTS = ["sessions", "games", "sorted_items", "lr_adjustments", "training_runs", "try_clicks",
+EXPORTS = ["player_overview", "players", "sessions", "games", "sorted_items", "lr_adjustments", "training_runs", "try_clicks",
            "dataset_by_game", "item_label_choices", "lr_popular_values", "lr_adjustments_per_session",
            "try_click_counts"]
 
@@ -49,7 +52,7 @@ def main():
 
     if not Path(args.db).exists():
         sys.exit(f"No stats database found at {args.db} - play the game first.")
-    conn = sqlite3.connect(args.db)
+    conn = open_database(args.db)          # also upgrades databases from older versions
 
     totals = conn.execute("SELECT (SELECT COUNT(*) FROM sessions), (SELECT COUNT(*) FROM games), "
                           "(SELECT COUNT(*) FROM games WHERE finished_at IS NOT NULL), "
@@ -57,6 +60,14 @@ def main():
     print("WHICHWAISTE USAGE STATS")
     print(f"  sessions {totals[0]} | games started {totals[1]} (finished {totals[2]}) | "
           f"items handled {totals[3]} | training runs {totals[4]}")
+
+    # 0. players (match these rows with the pre/post surveys)
+    table(conn, "PLAYERS (ONE ROW EACH - USE THIS TO MATCH SURVEYS)",
+          "SELECT player_id, first_name, last_name, sessions, games_finished, avg_score, lr_adjustments, "
+          "most_settled_lr, training_runs, best_test_acc, familiar_clicks, never_seen_clicks FROM player_overview")
+    unnamed = conn.execute("SELECT COUNT(*) FROM games WHERE player_id IS NULL").fetchone()[0]
+    if unnamed:
+        print(f"  note: {unnamed} game(s) were recorded before player names were added (no player)")
 
     # 1. the datasets players provide
     table(conn, "DATASETS PLAYERS BUILT (labels per game)", "SELECT * FROM dataset_by_game ORDER BY game_id")

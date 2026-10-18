@@ -22,6 +22,13 @@ class TryTab(RetroFrame):
         self.stats = stats_for(lab.app)
         self.tally = {"familiar": [0, 0], "novel_label": [0, 0], "forced": 0, "forced_conf": []}
 
+        # bottom-right navigation (packed first so it always stays visible)
+        bar = tk.Frame(self, bg=self.cget("bg"))
+        bar.pack(side="bottom", fill="x", pady=(8, 0))
+        self.button(bar, "PLAY AGAIN", lab.app.new_game, 13, bg=PICO["green"]).pack(side="right")
+        self.button(bar, "< BACK TO TRAINING", lambda: lab.show_tab("train"), 13,
+                    bg=PICO["light_gray"]).pack(side="right", padx=8)
+
         outer, body = self.panel(self, "TRY NEW ITEMS")
         outer.pack(fill="both", expand=True)
         self.label(body, "THE NETWORK MAPS ANY PICTURE TO ONE OF ITS LABELS. IT HAS NO \"I DON'T KNOW\" "
