@@ -871,3 +871,33 @@ test('optional help records topic openings and the demonstration sliders do not 
   await click(button('Reveal bin scores'))
   assert.deepEqual([...container.querySelectorAll('[aria-label="After training scores"] meter')].map(meter => meter.value), [.8, .15, .05])
 })
+
+test('learning-rate analytics record settled choices once and flush when leaving training', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] })
+  const completed = detectiveGame(), rates = []
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith('/learning-rate')) rates.push(JSON.parse(init.body))
+    return { ok: true, json: async () => url === '/api/sessions' ? structuredClone(completed) : { saved: true } }
+  }
+  await mount(App)
+  await click(button('START'))
+  await click(button('2 · Train'))
+  const slider = container.querySelector('.training-controls input[type="range"]')
+  const change = async value => React.act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(slider, value)
+    slider.dispatchEvent(new window.Event('input', { bubbles: true }))
+  })
+  await change('-2.5')
+  await React.act(async () => context.mock.timers.tick(500))
+  await change('-2')
+  await React.act(async () => context.mock.timers.tick(699))
+  assert.equal(rates.length, 0, 'Dragging the slider must not flood the database')
+  await React.act(async () => context.mock.timers.tick(1))
+  assert.deepEqual(rates.map(event => event.exponent), [-2])
+  await change('-1.5')
+  await click(button('3 · Explore'))
+  assert.deepEqual(rates.map(event => event.exponent), [-2, -1.5])
+  await React.act(async () => context.mock.timers.tick(1000))
+  assert.equal(rates.length, 2, 'Leaving training flushes the last choice without duplicating it')
+  assert.equal(new Set(rates.map(event => event.event_id)).size, 2)
+})

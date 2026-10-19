@@ -17,7 +17,8 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select, text, update
 
 from backend import cnn
-from backend.database import Base, Game, HelpOpen, SortAction, TrainingRun, make_database, now
+from backend.database import (Base, Game, HelpOpen, LearningRateAdjustment, SortAction,
+                              TrainingRun, TryClick, make_database, now)
 
 TOPICS = ('labels', 'pixels', 'filters', 'weights', 'learning', 'testing', 'accuracy', 'confidence', 'new-items')
 
@@ -43,6 +44,11 @@ class TrainingBody(BaseModel):
 class HelpBody(BaseModel):
     event_id: UUID
     topic: Literal['labels', 'pixels', 'filters', 'weights', 'learning', 'testing', 'accuracy', 'confidence', 'new-items']
+
+
+class LearningRateBody(BaseModel):
+    event_id: UUID
+    exponent: float = Field(ge=-4, le=-1, allow_inf_nan=False)
 
 
 def summary(actions):
@@ -193,6 +199,18 @@ def create_app(database_url=None):
         finally:
             training_slot.release()
 
+    @app.post('/api/sessions/{game_id}/learning-rate', status_code=201)
+    def record_learning_rate(game_id: UUID, body: LearningRateBody, db=Depends(connection)):
+        game = find_game(db, game_id, lock=True)
+        previous = db.get(LearningRateAdjustment, str(body.event_id))
+        if previous and (previous.session_id != game.id or previous.exponent != body.exponent):
+            raise HTTPException(409, 'Learning-rate event already exists.')
+        if not previous:
+            db.add(LearningRateAdjustment(id=str(body.event_id), session_id=game.id,
+                                          exponent=body.exponent, value=10 ** body.exponent))
+            db.commit()
+        return {'saved': True}
+
     @app.post('/api/sessions/{game_id}/train', status_code=202)
     def start_training(game_id: UUID, body: TrainingBody, tasks: BackgroundTasks, db=Depends(connection)):
         game = find_game(db, game_id, lock=True)
@@ -225,7 +243,15 @@ def create_app(database_url=None):
         game = find_game(db, game_id)
         if game.training_status != 'done' or not game.model_weights:
             raise HTTPException(409, 'Train your robot first.')
-        return cnn.try_item(game.model_weights, novel)
+        result = cnn.try_item(game.model_weights, novel)
+        predicted = result['probabilities'].index(max(result['probabilities']))
+        expected = cnn.CATEGORIES.index(result['destination']) if result['has_valid_bin'] else None
+        db.add(TryClick(id=str(uuid4()), session_id=game.id, training_run_id=game.training_run_id,
+                        kind='never_seen' if novel else 'familiar', item_name=result['name'],
+                        predicted_class=predicted, confidence=result['probabilities'][predicted],
+                        destination=result['destination'], correct=None if expected is None else predicted == expected))
+        db.commit()
+        return result
 
     dist = Path(__file__).resolve().parents[1] / 'frontend' / 'dist'
     if (dist / 'assets').is_dir():

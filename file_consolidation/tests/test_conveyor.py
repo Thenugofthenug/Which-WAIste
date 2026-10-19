@@ -28,6 +28,12 @@ class ConveyorTests(unittest.TestCase):
                                    new_game=lambda: None, current_lr=0.001)
         self.game = GameScreen(self.root, self.app)
 
+    def tick(self):
+        # Cancel the scheduled tick before advancing the hidden game manually.
+        if self.game._tick_job:
+            self.game.after_cancel(self.game._tick_job)
+        self.game._tick()
+
     def tearDown(self):
         self.game.destroy()
         self.root.destroy()
@@ -51,7 +57,7 @@ class ConveyorTests(unittest.TestCase):
         item.dragging = True
         self.game.drag = (item, 0, 0)
         roll = self.game.roll
-        self.game._tick()
+        self.tick()
         self.assertIsNone(self.game.drag)
         self.assertIsNone(self.app.items[0].label)
         self.assertEqual(self.game.missed, 1)
@@ -65,7 +71,7 @@ class ConveyorTests(unittest.TestCase):
         item = self.game.belt[0]
         start = item.y
         self.game.speed.set('FAST')
-        self.game._tick()
+        self.tick()
         self.assertAlmostEqual(item.y - start, SPEEDS['FAST'])
         self.game._miss(item)
         self.assertEqual(self.game.c.type(item.image_id), 'image')
@@ -82,7 +88,7 @@ class ConveyorTests(unittest.TestCase):
         start = item.y
         self.game.open_guide()
         self.game.guide.withdraw()
-        self.game._tick()
+        self.tick()
         self.assertEqual(item.y, start)
         guide = self.game.guide
         self.assertIn('LABELS TEACH THE ROBOT', guide.text.get('1.0', 'end'))
@@ -92,9 +98,37 @@ class ConveyorTests(unittest.TestCase):
         self.assertIn('feature map', guide.text.get('1.0', 'end'))
         guide.close()
         self.assertFalse(self.game.paused)
-        self.game._tick()
+        self.tick()
         self.assertGreater(item.y, start)
         self.assertIsNone(self.app.items[0].label)
+
+    def test_number_keys_sort_the_front_item(self):
+        for _ in range(2):
+            self.game._spawn()
+        front, back = self.game.belt
+        front.y, back.y = 300, 50
+        self.assertTrue(self.root.bind('<KeyPress-2>'))
+        # A withdrawn test window cannot receive keyboard focus; call its bound handler.
+        self.game._key_sort(1)
+        self.assertEqual(self.app.items[front.index].label, 1)       # 2 = Compost
+        self.assertIsNone(self.app.items[back.index].label)
+        self.game._key_sort(2)                                        # 3 = Landfill
+        self.assertEqual(self.app.items[back.index].label, 2)
+        self.assertEqual(self.game.sorted, 2)
+
+    def test_miss_pauses_with_help_and_can_slow_down(self):
+        self.game._spawn()
+        item = self.game.belt[0]
+        item.y = STOP_Y
+        self.tick()
+        self.assertTrue(self.game.paused)
+        self.assertIsNotNone(self.game.miss_box)
+        self.assertIn('/29', self.game.count_lbl.cget('text'))          # the total shrinks
+        self.game._key_sort(0)                                        # keys wait while paused
+        self.assertEqual(self.game.sorted, 0)
+        self.game._close_miss_help('SLOW')
+        self.assertFalse(self.game.paused)
+        self.assertEqual(self.game.speed.get(), 'SLOW')
 
     def test_all_missed_round_finishes_and_lab_offers_replay(self):
         for _ in self.app.items:

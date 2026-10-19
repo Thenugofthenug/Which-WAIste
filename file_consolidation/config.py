@@ -34,8 +34,8 @@ PICO = {
     "blue": "#29adff", "lavender": "#83769c", "pink": "#ff77a8", "peach": "#ffccaa",
 }
 CAT_COLORS = [PICO["blue"], PICO["green"], PICO["light_gray"]]   # one per category
-EXCITE = PICO["green"]         # positive weight
-INHIBIT = PICO["red"]          # negative weight
+POSITIVE = PICO["green"]       # positive weight: boosts the next neuron
+NEGATIVE = PICO["red"]         # negative weight: lowers the next neuron
 RGB_COLORS = [PICO["red"], PICO["green"], PICO["blue"]]
 
 # Interface colors
@@ -49,6 +49,13 @@ MUTED = PICO["lavender"]
 # Fonts); otherwise a bold monospace font stands in.
 PIXEL_FONTS = ["Press Start 2P", "Silkscreen", "Pixelify Sans", "VT323"]
 MONO_FONTS = ["Courier New", "Courier", "DejaVu Sans Mono", "Menlo", "Consolas"]
+
+# Per-player usage statistics (see analytics.py). Saved only in a local SQLite file
+# next to the game, never sent anywhere. Players enter their first and last name at
+# the start so results can be matched with surveys. Set to False to turn tracking
+# (and the name prompt) off.
+ANALYTICS_ENABLED = True
+STATS_DB_NAME = "whichwaiste_stats.db"
 
 # Pillow compatibility (constants moved into enums in Pillow 9.1)
 RESAMPLE = getattr(Image, "Resampling", Image)

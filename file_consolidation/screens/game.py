@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from PIL import ImageTk
 
+from analytics import stats_for
 from config import ACCENT, CAT_COLORS, CATEGORIES, FG, MUTED, PANEL, PICO, hex_to_rgb
 from learning_help import LearningGuide, add_tooltip
 from sprites import cutout, sprite
@@ -31,6 +32,7 @@ BIN_CENTERS = [280, 640, 1000]
 FRAME_MS = 30                          # ~33 frames per second
 SPEED = 3.6                            # faster default, pixels per frame
 SPEEDS = {"SLOW": 2.2, "NORMAL": SPEED, "FAST": 5.0}
+SLOWER = {"FAST": "NORMAL", "NORMAL": "SLOW"}  # one step slower (SLOW is the slowest)
 
 
 def tint(hex_col, f):
@@ -67,26 +69,37 @@ class GameScreen(RetroFrame):
         self.done = False
         self._jobs = []                # one-off timers (animations, end of game)
         self._tick_job = None
-        self.paused = False
+        self._pause_reasons = set()    # the belt stops while any reason is active ("guide", "missed")
         self.guide = None
+        self.miss_box = None           # the missed-item message, while it's open
+        self._key_seqs = []
         self.speed = tk.StringVar(value="NORMAL")
+        self.stats = stats_for(app)
+        self.stats.start_game()
 
         hud = tk.Frame(self, bg=PANEL, highlightthickness=3, highlightbackground=FG)
         hud.pack(fill="x", padx=12, pady=(12, 6))
         self.count_lbl = self.label(hud, "", 11, padx=16, pady=8)
         self.count_lbl.pack(side="left")
         self.label(hud, "TRASH SORTER", 14, fg=PICO["green"], padx=16).pack(side="right")
-        self.label(self, "SORT BEFORE ITEMS SLIP PAST! +10 FOR A CORRECT BIN. WRONG OR MISSED: +0. YOUR LABELS TEACH THE ROBOT.",
+        player = getattr(app, "player", None)
+        if player:                                   # shows who the results are saved for
+            self.label(hud, f"PLAYER: {player[0]} {player[1]}".upper(), 11, fg=ACCENT, padx=8).pack(side="right")
+        self.label(self, "DRAG ITEMS INTO A BIN, OR PRESS 1 = RECYCLING  2 = COMPOST  3 = LANDFILL FOR THE ITEM IN THE "
+                         "YELLOW BOX. +10 FOR A CORRECT BIN. YOUR LABELS TEACH THE ROBOT.",
                    11, fg=MUTED).pack(pady=(0, 6))
         controls = tk.Frame(self, bg=self.cget('bg'))
         controls.pack(fill='x', padx=16, pady=(0, 6))
         self.label(controls, "BELT SPEED", 10, fg=ACCENT).pack(side='left', padx=(0, 10))
-        speed_menu = tk.OptionMenu(controls, self.speed, *SPEEDS)
-        speed_menu.configure(bg=PANEL, fg=FG, activebackground=PANEL, activeforeground=ACCENT,
-                             font=self.fonts(10), highlightthickness=0)
-        speed_menu['menu'].configure(bg=PANEL, fg=FG, font=self.fonts(10))
-        speed_menu.pack(side='left')
-        add_tooltip(speed_menu, "Normal is faster than before. Choose Slow for more time or Fast for a challenge.", self.fonts)
+        self.speed_btns = {}
+        for name in SPEEDS:                      # one button per speed; the chosen one lights up
+            btn = self.button(controls, name, lambda n=name: self.speed.set(n), 10, bg=PICO["light_gray"])
+            btn.pack(side='left', padx=(0, 6))
+            add_tooltip(btn, "Normal is faster than before. Choose Slow for more time or Fast for a challenge.",
+                        self.fonts)
+            self.speed_btns[name] = btn
+        self.speed.trace_add("write", lambda *_: self._show_speed())
+        self._show_speed()
         help_btn = self.button(controls, "? LEARNING TIPS", self.open_guide, 10, bg=PICO['blue'])
         help_btn.pack(side='right')
         add_tooltip(help_btn, "Explore labels, pixels, filters, weights and fair testing. The belt pauses while the guide is open.", self.fonts)
@@ -98,6 +111,7 @@ class GameScreen(RetroFrame):
         self._draw_bins()
         self._draw_text()
         self._bind_mouse()
+        self._bind_keys()
         self._update_counts()
         self._tick_job = self.after(FRAME_MS, self._tick)
 
@@ -146,19 +160,26 @@ class GameScreen(RetroFrame):
             c.create_rectangle(x0 + 18, y0 + 16, x1 - 18, y1 - 58, fill=tint(col, 0.32),
                                outline=tint(col, 0.6), width=4)                       # opening
             c.create_line(x0 + 18, y0 + 26, x1 - 18, y0 + 26, fill=tint(col, 0.45), width=2)
-            c.create_text(cx, y1 - 29, text=CATEGORIES[i].upper(), fill=PICO["black"], font=self.fonts(15))
+            c.create_text(cx, y1 - 29, text=f"{i + 1}  {CATEGORIES[i].upper()}", fill=PICO["black"],
+                          font=self.fonts(15))
 
     def _draw_text(self):
         self.fb_text = self.c.create_text(265, 170, text="", fill=FG, font=self.fonts(22), width=440)
         self.fb_sub = self.c.create_text(265, 250, text="", fill=MUTED, font=self.fonts(10), width=440)
         self.truck_text = self.c.create_text(1015, 170, text="", fill=FG, font=self.fonts(12), width=420)
+        # yellow box around the item that keys 1 / 2 / 3 will sort
+        self.target_box = self.c.create_rectangle(0, 0, 0, 0, outline=ACCENT, width=3, state="hidden")
+        self.target_tag = self.c.create_text(0, 0, text="PRESS 1 / 2 / 3", fill=ACCENT, font=self.fonts(9),
+                                             state="hidden")
 
     # -------------------------------------------------------------- helpers
-    def open_guide(self):
-        if self.guide is not None and self.guide.winfo_exists():
-            self.guide.lift()
-            return
-        self.paused = True
+    @property
+    def paused(self):
+        """True while the belt is stopped (guide or missed-item message open)."""
+        return bool(self._pause_reasons)
+
+    def _cancel_drag(self):
+        """Drop whatever is being dragged back onto its spot on the belt."""
         if self.drag is not None:
             b = self.drag[0]
             b.dragging = False
@@ -166,11 +187,24 @@ class GameScreen(RetroFrame):
             self.drag = None
             self.c.config(cursor='')
             self._highlight_bin(None)
+
+    def open_guide(self):
+        if self.guide is not None and self.guide.winfo_exists():
+            self.guide.lift()
+            return
+        self._pause_reasons.add("guide")
+        self._cancel_drag()
         self.guide = LearningGuide(self, self._close_guide)
+
+    def _show_speed(self):
+        """Light up the button for the current belt speed."""
+        for name, btn in self.speed_btns.items():
+            if btn.winfo_exists():
+                btn.set_color(ACCENT if name == self.speed.get() else PICO["light_gray"])
 
     def _close_guide(self):
         self.guide = None
-        self.paused = False
+        self._pause_reasons.discard("guide")
 
     def _animate_lava(self):
         colors = [PICO['orange'], PICO['yellow'], PICO['red'], PICO['orange']]
@@ -181,8 +215,9 @@ class GameScreen(RetroFrame):
         self._jobs.append(self.after(ms, fn))
 
     def _update_counts(self):
-        self.count_lbl.config(text=f"DONE {self.sorted + self.missed:02d}/{len(self.items)}  "
-                                  f"SCORE {self.score}  RIGHT {self.correct}  MISSED {self.missed}  STREAK {self.streak}")
+        total = len(self.items) - self.missed           # items lost in the lava leave the dataset
+        self.count_lbl.config(text=f"SORTED {self.sorted:02d}/{total}  SCORE {self.score}  RIGHT {self.correct}  "
+                                  f"LOST {self.missed}  STREAK {self.streak}")
         left = len(self.items) - self.next_spawn
         self.c.itemconfig(self.truck_text, text=f"STILL ON THE TRUCK:\n{left} ITEM{'S' if left != 1 else ''}"
                           if left else "LAST ITEMS ON THE BELT!")
@@ -244,7 +279,105 @@ class GameScreen(RetroFrame):
             top = min((b.y for b in self.belt), default=None)
             if top is None or top >= -ITEM_PX / 2 + SPACING:
                 self._spawn()
+        self._update_target()
         self._tick_job = self.after(FRAME_MS, self._tick)
+
+    # ------------------------------------------------------------- keyboard
+    def _bind_keys(self):
+        """Keys 1 / 2 / 3 (top row or number pad) sort the item in the yellow box,
+        for players who find dragging on a trackpad hard."""
+        top = self.winfo_toplevel()
+        for i in range(len(CATEGORIES)):
+            for seq in (f"<KeyPress-{i + 1}>", f"<KeyPress-KP_{i + 1}>"):
+                try:
+                    top.bind(seq, lambda e, cat=i: self._key_sort(cat))
+                    self._key_seqs.append(seq)
+                except tk.TclError:          # a key this platform doesn't know
+                    pass
+
+    def _front_item(self):
+        """The item the keys act on: the one being dragged, else the one closest to the lava."""
+        if self.drag is not None:
+            return self.drag[0]
+        return max(self.belt, key=lambda b: b.y, default=None)
+
+    def _key_sort(self, cat):
+        if self.done or self.paused:
+            return
+        b = self._front_item()
+        if b is None:
+            return
+        if self.drag is not None:            # a key press finishes a drag in progress
+            self.drag = None
+            b.dragging = False
+            self.c.config(cursor="")
+            self._highlight_bin(None)
+        self._sort(b, cat)
+
+    def _update_target(self):
+        """Move the yellow box (and its PRESS 1 / 2 / 3 tag) onto the next item."""
+        b = None if self.done else self._front_item()
+        if b is None:
+            self.c.itemconfig(self.target_box, state="hidden")
+            self.c.itemconfig(self.target_tag, state="hidden")
+            return
+        x, y = self.c.coords(b.image_id)
+        half = ITEM_PX / 2 + 4
+        self.c.coords(self.target_box, x - half, y - half, x + half, y + half + 14)
+        self.c.coords(self.target_tag, x, y - half - 10)
+        for item in (self.target_box, self.target_tag):
+            self.c.itemconfig(item, state="normal")
+            self.c.tag_raise(item)
+
+    # ---------------------------------------------------- missed-item help
+    def _show_miss_help(self):
+        """Pause the belt, explain what happened, and offer to slow the belt down."""
+        self._pause_reasons.add("missed")
+        self._cancel_drag()
+        if self.miss_box is None or not self.miss_box.winfo_exists():
+            outer, body = self.panel(self, "ITEM LOST IN THE LAVA")
+            self.miss_box = outer
+            self.miss_text = self.label(body, "", 11, justify="left", wraplength=640)
+            self.miss_text.pack(anchor="w", pady=(0, 12))
+            self.miss_btns = tk.Frame(body, bg=PANEL)
+            self.miss_btns.pack(anchor="w")
+            outer.place(relx=0.5, rely=0.5, anchor="center")
+        self._fill_miss_help()
+        self.miss_box.lift()
+
+    def _fill_miss_help(self):
+        total = len(self.items) - self.missed
+        slower = SLOWER.get(self.speed.get())
+        lines = ["THAT ITEM REACHED THE END OF THE BELT AND FELL INTO THE LAVA.",
+                 f"IT WAS REMOVED FROM YOUR DATASET: THE ROBOT NOW HAS {total} ITEMS TO LEARN FROM.",
+                 "",
+                 "HOW TO SAVE THE NEXT ONE:",
+                 "  - THE ITEM IN THE YELLOW BOX IS NEXT IN LINE.",
+                 "  - DRAG IT INTO A BIN, OR PRESS 1 = RECYCLING, 2 = COMPOST, 3 = LANDFILL.",
+                 "  - YOU CAN GRAB ANY ITEM ON THE BELT, NOT JUST THE FIRST ONE."]
+        if slower is None:
+            lines += ["", "THE BELT IS ALREADY ON THE SLOWEST SPEED."]
+        self.miss_text.config(text="\n".join(lines))
+        for widget in self.miss_btns.winfo_children():
+            widget.destroy()
+        if slower:
+            first = self.button(self.miss_btns, f"SLOW DOWN TO {slower} & CONTINUE",
+                                lambda: self._close_miss_help(slower), 11, bg=PICO["green"])
+            first.pack(side="left", padx=(0, 10))
+            self.button(self.miss_btns, "KEEP SPEED & CONTINUE", self._close_miss_help, 11,
+                        bg=PICO["light_gray"]).pack(side="left")
+        else:
+            first = self.button(self.miss_btns, "CONTINUE", self._close_miss_help, 11, bg=PICO["green"])
+            first.pack(side="left")
+        first.focus_set()                    # Enter or Space continues
+
+    def _close_miss_help(self, new_speed=None):
+        if new_speed:
+            self.speed.set(new_speed)
+        if self.miss_box is not None and self.miss_box.winfo_exists():
+            self.miss_box.destroy()
+        self.miss_box = None
+        self._pause_reasons.discard("missed")
 
     # ------------------------------------------------------------- dragging
     def _bind_mouse(self):
@@ -281,6 +414,7 @@ class GameScreen(RetroFrame):
         b, dx, dy = self.drag
         self._place(b, e.x + dx, e.y + dy)
         self._highlight_bin(self._bin_at(e.x, e.y))
+        self._update_target()
 
     def _on_release(self, e):
         if self.drag is None or self.paused:
@@ -302,6 +436,7 @@ class GameScreen(RetroFrame):
         item = self.items[b.index]
         item.label = cat
         self.sorted += 1
+        self.stats.item_sorted(item.name, item.expected, cat)
         if cat == item.expected:
             self.correct += 1
             self.score += 10
@@ -318,11 +453,13 @@ class GameScreen(RetroFrame):
         self._drop_into_bin(b, cat)
         self._update_counts()
         self._finish_if_complete()
+        self._update_target()
 
     def _miss(self, b):
         self.belt.remove(b)
         self.items[b.index].label = None
         self.missed += 1
+        self.stats.item_sorted(self.items[b.index].name, self.items[b.index].expected, None)
         self.streak = 0
         if self.drag is not None and self.drag[0] is b:
             self.drag = None
@@ -334,6 +471,9 @@ class GameScreen(RetroFrame):
                                          "NO POINTS THIS TIME. MISSED ITEMS HAVE NO TRAINING LABEL.")
         self._update_counts()
         self._finish_if_complete()
+        self._update_target()
+        if not self.done:
+            self._show_miss_help()
 
     def _burn_into_lava(self, b):
         """Shrink a missed sprite into the pool and release square sparks."""
@@ -365,6 +505,9 @@ class GameScreen(RetroFrame):
     def _finish_if_complete(self):
         if not self.done and self.sorted + self.missed == len(self.items):
             self.done = True
+            self._close_miss_help()
+            self.stats.finish_game(self.score, self.correct, self.sorted - self.correct, self.missed,
+                                   self.best_streak)
             self.app.game_summary = (f"SCORE {self.score}/{len(self.items) * 10} | RIGHT {self.correct} | "
                                      f"WRONG {self.sorted - self.correct} | MISSED {self.missed} | BEST STREAK {self.best_streak}")
             self._later(500, self._show_summary)
@@ -376,7 +519,7 @@ class GameScreen(RetroFrame):
                                          "DID OUR ROBOT IMPROVE? TRAIN IT TO FIND OUT.\n"
                                          "GAME POINTS ARE NOT MODEL ACCURACY.")
         self.button(self, "TEACH THE ROBOT >", self.app.show_lab, 11, bg=PICO["green"]).place(x=840, y=380)
-        self.button(self, "PLAY AGAIN", self.app.new_game, 11, bg=MUTED).place(x=840, y=440)
+        self.button(self, "PLAY AGAIN", self.app.new_game, 11, bg=PICO["light_gray"]).place(x=840, y=440)
 
     def _drop_into_bin(self, b, cat, steps=7):
         """Slide the item into the bin opening, flash the bin, then remove the item."""
@@ -398,6 +541,9 @@ class GameScreen(RetroFrame):
         self._later(180, lambda: self.c.itemconfig(rim, fill=CAT_COLORS[cat]))
 
     def destroy(self):
+        top = self.winfo_toplevel()
+        for seq in self._key_seqs:           # the keys belong to this screen only
+            top.unbind(seq)
         for job in self._jobs + [self._tick_job]:
             try:
                 if job:

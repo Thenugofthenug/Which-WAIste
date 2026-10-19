@@ -12,9 +12,12 @@ from matplotlib.figure import Figure
 from config import (ACCENT, BG, CATEGORIES, EPOCHS, FG, LR_LOG_RANGE, MUTED, PANEL, PICO,
                     SHOW_PER_BLOCK)
 from model import probe_model, train_model
+from analytics import stats_for
 from learning_help import add_tooltip
 from network_view import NetworkView, mpl_size
 from widgets import PixelProgress, RetroFrame
+
+LR_SETTLE_MS = 700      # slider must rest this long to count as one adjustment
 
 
 class TrainTab(RetroFrame):
@@ -23,9 +26,13 @@ class TrainTab(RetroFrame):
         self.lab, self.app = lab, lab.app
         self.items = lab.items
         self.training = False
+        self.stats = stats_for(lab.app)
+        self._lr_job = None                       # pending 'slider settled' record
+        self.run_id = None
         self.probe_idx = lab.val_idx[0]
         self.history = {"epoch": [], "train_acc": [], "val_acc": []}
 
+        self._build_action_bar()             # reserved first, so a short window can't cut it off
         top = tk.Frame(self, bg=self.cget("bg"))
         top.pack(fill="x")
         self._build_controls(top)
@@ -60,8 +67,18 @@ class TrainTab(RetroFrame):
         self.epoch_lbl.pack()
         self.status_lbl = self.label(ctrl, "READY.", 10, fg=ACCENT, wraplength=256, justify="left")
         self.status_lbl.pack(anchor="w", pady=6)
-        self.again_btn = self.button(ctrl, "PLAY AGAIN", self.app.new_game, 10, bg=MUTED)
-        self.again_btn.pack(fill="x", pady=3)
+
+    def _build_action_bar(self):
+        """TRY NEW ITEMS and PLAY AGAIN, at the bottom right."""
+        bar = tk.Frame(self, bg=self.cget("bg"))
+        bar.pack(side="bottom", fill="x", pady=(8, 0))
+        self.try_btn = self.button(bar, "TRY NEW ITEMS >", lambda: self.lab.show_tab("try"), 13, bg=PICO["green"])
+        self.try_btn.pack(side="right")
+        self.try_btn.set_enabled(False)      # nothing to test until the robot has trained
+        self.again_btn = self.button(bar, "PLAY AGAIN", self.app.new_game, 13, bg=PICO["light_gray"])
+        self.again_btn.pack(side="right", padx=8)
+        self.bar_hint = self.label(bar, "TRAIN THE ROBOT FIRST, THEN TRY IT ON NEW ITEMS.", 10, fg=MUTED)
+        self.bar_hint.pack(side="left")
 
     def _build_accuracy(self, parent):
         outer, body = self.panel(parent, "ACCURACY")
@@ -88,48 +105,77 @@ class TrainTab(RetroFrame):
         outer, net = self.panel(self, "INSIDE THE NETWORK")
         outer.pack(fill="x", pady=8)
         self.label(net, f"EACH SQUARE IS A NEURON (ONE FILTER). ONLY THE {SHOW_PER_BLOCK} MOST ACTIVE PER BLOCK "
-                        "ARE SHOWN; GLOW = HOW HARD IT FIRES. LINES ARE THE REAL WEIGHTS: GREEN = EXCITATORY, "
-                        "RED = INHIBITORY, BRIGHTER = MORE SIGNAL FLOWING. DW = HOW MUCH EACH BLOCK'S WEIGHTS "
-                        "MOVED LAST EPOCH.", 8, fg=MUTED, wraplength=1240, justify="left").pack(anchor="w", pady=(0, 4))
-        self.view = NetworkView(net)
-        self.view.widget.pack(fill="x")
+                        "ARE SHOWN; GLOW = HOW STRONGLY IT RESPONDS. LINES ARE THE REAL WEIGHTS: GREEN = POSITIVE "
+                        "(BOOSTS THE NEXT NEURON), RED = NEGATIVE (LOWERS IT), BRIGHTER = MORE SIGNAL. CHANGE = HOW "
+                        "MUCH EACH BLOCK'S WEIGHTS MOVED LAST EPOCH.", 8, fg=MUTED, wraplength=1240,
+                   justify="left").pack(anchor="w", pady=(0, 4))
+        # PREV / NEXT browse the sorted items; placed above the diagram so a short window can't hide them
         row = tk.Frame(net, bg=PANEL)
-        row.pack(fill="x", pady=(6, 0))
-        self.button(row, "< PREV", lambda: self.change_probe(-1), 9, bg=MUTED).pack(side="left")
-        self.button(row, "NEXT >", lambda: self.change_probe(1), 9, bg=MUTED).pack(side="left", padx=6)
+        row.pack(fill="x", pady=(0, 6))
+        self.button(row, "< PREV", lambda: self.change_probe(-1), 9, bg=PICO["light_gray"]).pack(side="left")
+        self.button(row, "NEXT >", lambda: self.change_probe(1), 9, bg=PICO["light_gray"]).pack(side="left", padx=6)
         self.probe_lbl = self.label(row, "", 10)
         self.probe_lbl.pack(side="left", padx=8)
+        self.view = NetworkView(net)
+        self.view.widget.pack(fill="x")
 
     def _build_log(self):
-        outer, body = self.panel(self, "LOG")
+        outer, body = self.panel(self, "ROBOT LOG - WHAT THE NEURAL NETWORK IS DOING")
         outer.pack(fill="both", expand=True)
-        self.log_txt = tk.Text(body, height=6, bg=BG, fg=PICO["green"], font=self.fonts.mono(10),
-                               relief="flat", highlightthickness=0, wrap="none")
-        sb = tk.Scrollbar(body, command=self.log_txt.yview)
+        self.label(body, "A LIVE DIARY OF TRAINING. EPOCH = ONE TRIP THROUGH ALL THE PRACTICE PICTURES. "
+                         "LOSS = HOW WRONG THE GUESSES ARE (LOWER IS BETTER). ACC = HOW OFTEN IT MATCHES YOUR "
+                         "LABELS. PRACTICE = PICTURES IT LEARNS FROM. QUIZ = PICTURES IT NEVER LEARNS FROM, USED "
+                         "TO CHECK ITS PROGRESS. YELLOW LINES EXPLAIN WHAT JUST HAPPENED.",
+                   8, fg=MUTED, wraplength=1240, justify="left").pack(anchor="w", pady=(0, 4))
+        box = tk.Frame(body, bg=BG)
+        box.pack(fill="both", expand=True)
+        self.log_txt = tk.Text(box, height=6, bg=BG, fg=PICO["green"], font=self.fonts.mono(10),
+                               relief="flat", highlightthickness=0, wrap="word")
+        self.log_txt.tag_configure("note", foreground=ACCENT)
+        sb = tk.Scrollbar(box, command=self.log_txt.yview)
         self.log_txt.config(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.log_txt.pack(side="left", fill="both", expand=True)
-        self.log("> PRESS START TRAINING TO TEACH THE NETWORK YOUR SORTING RULES.")
+        self.log("> PRESS START TRAINING TO TEACH THE NETWORK YOUR SORTING RULES.", note=True)
         add_tooltip(self.lr_lbl, "Learning rate controls the size of weight updates. Too large can be unstable; too small may learn slowly.", self.fonts)
         add_tooltip(self.epoch_lbl, "An epoch is one pass through the training examples. Validation examples do not update weights.", self.fonts)
         add_tooltip(self.status_lbl, "Test accuracy measures matches to your labels, not your game points or guaranteed correct recycling rules.", self.fonts)
         add_tooltip(self.probe_lbl, "A probe is the item shown in the network diagram. Browse items to see how their responses differ.", self.fonts)
 
     # ---------------------------------------------------------------- display
-    def log(self, msg):
-        self.log_txt.insert("end", msg + "\n")
+    def log(self, msg, note=False):
+        """Add a line to the robot log. note=True marks a plain-language explanation (yellow)."""
+        self.log_txt.insert("end", msg + "\n", ("note",) if note else ())
         self.log_txt.see("end")
 
     def on_lr_change(self, val):
         self.app.current_lr = 10 ** float(val)
         self.lr_lbl.config(text=f"{self.app.current_lr:.1e}")
+        # Tk reports every step of a drag; record one adjustment once the slider settles
+        if self._lr_job is not None:
+            self.after_cancel(self._lr_job)
+        self._lr_job = self.after(LR_SETTLE_MS, self._record_lr)
+
+    def _record_lr(self):
+        self._lr_job = None
+        self.stats.lr_settled(self.app.current_lr)
+
+    def _flush_lr(self):
+        """Record a pending slider adjustment right away (before training or leaving)."""
+        if self._lr_job is not None:
+            self.after_cancel(self._lr_job)
+            self._record_lr()
+
+    def destroy(self):
+        self._flush_lr()
+        super().destroy()
 
     def redraw_plot(self):
         ax, h = self.ax_acc, self.history
         ax.clear()
         ax.set_facecolor(BG)
-        ax.plot(h["epoch"], h["train_acc"], drawstyle="steps-post", color=PICO["blue"], lw=2.5, label="TRAIN")
-        ax.plot(h["epoch"], h["val_acc"], drawstyle="steps-post", color=PICO["red"], lw=2.5, label="VAL")
+        ax.plot(h["epoch"], h["train_acc"], drawstyle="steps-post", color=PICO["blue"], lw=2.5, label="PRACTICE (TRAIN)")
+        ax.plot(h["epoch"], h["val_acc"], drawstyle="steps-post", color=PICO["red"], lw=2.5, label="QUIZ (VAL)")
         ax.set_xlim(0, EPOCHS)
         ax.set_ylim(0, 1.05)
         ax.grid(color=PICO["dark_gray"], linestyle=":", lw=1)
@@ -180,7 +226,15 @@ class TrainTab(RetroFrame):
         self.stop_btn.set_enabled(True)
         self.again_btn.set_enabled(False)
         self.status_lbl.config(text="TRAINING...")
-        self.log(f"\n=== NEW CNN - {EPOCHS} EPOCHS - LR {self.app.current_lr:.1e} ===")
+        self.best_val_loss = float("inf")
+        self.warned = set()                       # one-time hints already shown this run
+        self._flush_lr()
+        self.run_id = self.stats.training_started(self.app.current_lr, len(self.lab.train_idx),
+                                                  len(self.lab.val_idx), len(self.lab.test_idx))
+        self.log(f"\n=== NEW ROBOT BRAIN - {EPOCHS} EPOCHS - LEARNING RATE {self.app.current_lr:.1e} ===")
+        self.log("THE ROBOT STARTS WITH RANDOM WEIGHTS, SO ITS FIRST GUESSES ARE BASICALLY RANDOM. EACH EPOCH "
+                 "IT LOOKS AT EVERY PRACTICE PICTURE, COMPARES ITS GUESS WITH YOUR LABEL, AND NUDGES ITS "
+                 "WEIGHTS TO BE A LITTLE LESS WRONG.", note=True)
         imgs = [self.items[i].image for i in self.lab.train_idx]
         labels = [self.items[i].label for i in self.lab.train_idx]
         threading.Thread(target=self._train_thread, args=(imgs, labels), daemon=True).start()
@@ -203,7 +257,7 @@ class TrainTab(RetroFrame):
 
     def handle_message(self, kind, data):
         if kind == "log":
-            self.log(data)
+            self.log(data, note=True)
         elif kind == "probe":
             self.view.show(self.items[data["probe_idx"]].image, data["viz"], data["probs"],
                            note=self.probe_note("EPOCH 0 (RANDOM) - "))
@@ -220,9 +274,9 @@ class TrainTab(RetroFrame):
             self.history[key].append(d[key])
         self.pbar.set(d["epoch"] / EPOCHS)
         self.epoch_lbl.config(text=f"EPOCH {d['epoch']:02d}/{EPOCHS}")
-        self.log(f"EPOCH {d['epoch']:>2}/{EPOCHS}  LR {d['lr']:.1e}  "
-                 f"TRAIN LOSS {d['train_loss']:.3f} ACC {d['train_acc']:.2f}  |  "
-                 f"VAL LOSS {d['val_loss']:.3f} ACC {d['val_acc']:.2f}")
+        self.log(f"EPOCH {d['epoch']:>2}/{EPOCHS}   PRACTICE: LOSS {d['train_loss']:.2f}  ACC {d['train_acc']:>4.0%}"
+                 f"   |   QUIZ: LOSS {d['val_loss']:.2f}  ACC {d['val_acc']:>4.0%}")
+        self.narrate_epoch(d)
         self.redraw_plot()
         self.probe_lbl.config(text=self.probe_note())
         self.view.show(self.items[d["probe_idx"]].image, d["viz"], d["probs"], dw=d["dw"],
@@ -231,8 +285,12 @@ class TrainTab(RetroFrame):
     def on_done(self, d):
         if d["best_epoch"]:
             self.log(f"\nRESTORED BEST MODEL FROM EPOCH {d['best_epoch']} (LOWEST VALIDATION LOSS).")
+            self.log(f"TRAINING IS OVER. THE ROBOT GOES BACK TO ITS BEST VERSION (EPOCH {d['best_epoch']}, WHEN IT "
+                     f"DID BEST ON THE QUIZ) AND TAKES A FINAL TEST ON PICTURES IT HAS NEVER SEEN.", note=True)
         else:
             self.log("\nNO FULL EPOCH COMPLETED - TESTING THE UNTRAINED MODEL.")
+            self.log("TRAINING STOPPED BEFORE THE FIRST EPOCH FINISHED, SO THE ROBOT IS STILL GUESSING WITH "
+                     "RANDOM WEIGHTS.", note=True)
         self.log(f"TEST LOSS {d['test_loss']:.3f}   ACCURACY OVER ALL VIEWS {d['test_acc']:.0%}")
         delta = (d['test_acc'] - d['before_test_acc']) * 100
         self.log(f"DID OUR ROBOT IMPROVE? BEFORE {d['before_test_acc']:.0%} -> AFTER {d['test_acc']:.0%} "
@@ -249,11 +307,39 @@ class TrainTab(RetroFrame):
                      f"({p[pred]:.0%})")
         acc = correct / len(self.lab.test_idx)
         self.log(f"TEST ITEMS CORRECT: {correct}/{len(self.lab.test_idx)} = {acc:.0%}")
+        self.log("EACH TEST LINE ABOVE SHOWS YOUR LABEL, THE ROBOT'S ANSWER, AND HOW SURE IT WAS. "
+                 "OK = IT MATCHED YOUR LABEL, X = IT DIDN'T.", note=True)
         self.log("> OPEN '2 - TRY NEW ITEMS' TO FEED THE NETWORK NEW PICTURES.")
         self.finish_training(f"{'STOPPED EARLY' if d['stopped'] else 'DONE!'} TEST VIEWS: "
                              f"{d['before_test_acc']:.0%} -> {d['test_acc']:.0%} ({delta:+.1f} pp)")
+        self.stats.training_finished(self.run_id, self.app.current_lr, len(self.history["epoch"]),
+                                     d["stopped"], d["before_test_acc"], d["test_acc"])
         self.lab.on_trained(d["model"])
+        self.try_btn.set_enabled(True)
+        self.bar_hint.config(text="DONE TRAINING? TRY THE ROBOT ON NEW ITEMS, OR PLAY AGAIN.")
         self.change_probe(0)
+
+    def narrate_epoch(self, d):
+        """Plain-language notes about what just happened inside the network."""
+        e = d["epoch"]
+        if e == 1:
+            self.log("FIRST EPOCH DONE: THE ROBOT HAS SEEN EVERY PRACTICE PICTURE ONCE AND ADJUSTED ITS "
+                     "WEIGHTS AFTER EACH SMALL GROUP OF PICTURES.", note=True)
+        if d["val_loss"] < self.best_val_loss:
+            self.best_val_loss = d["val_loss"]
+            if e > 1:
+                self.log("  ^ NEW BEST QUIZ RESULT - THE ROBOT SAVES THIS VERSION OF ITSELF.", note=True)
+        if e >= 8 and d["train_acc"] - d["val_acc"] >= 0.3 and "overfit" not in self.warned:
+            self.warned.add("overfit")
+            self.log("HEADS UP: THE PRACTICE SCORE IS MUCH HIGHER THAN THE QUIZ SCORE. THE ROBOT MAY BE "
+                     "MEMORIZING ITS PRACTICE PICTURES INSTEAD OF LEARNING GENERAL PATTERNS (OVERFITTING).",
+                     note=True)
+        if e == 10 and d["train_acc"] < 0.5 and "stuck" not in self.warned:
+            self.warned.add("stuck")
+            self.log("THE ROBOT IS STRUGGLING TO LEARN. TRY TRAINING AGAIN WITH THE LEARNING-RATE SLIDER "
+                     "MOVED A LITTLE.", note=True)
+        if e == EPOCHS // 2:
+            self.log("HALFWAY THERE! WATCH WHETHER THE QUIZ SCORE KEEPS CLIMBING OR LEVELS OFF.", note=True)
 
     def finish_training(self, status):
         self.training = False

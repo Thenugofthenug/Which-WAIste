@@ -66,7 +66,7 @@ def probe_model(model, img):
     output classes. viz["edges"][k] is an (n_src, n_dst) matrix of the real
     weights joining column k to column k+1:
       - into a conv block: each 3x3 kernel summed into one number (its net
-        excitatory/inhibitory effect), scaled by that filter's batch-norm gain;
+        positive/negative effect), scaled by that filter's batch-norm gain;
       - last block -> output: the classifier's weights, which act directly on
         each filter's average activation."""
     model.eval()
@@ -144,7 +144,8 @@ def train_model(train_imgs, train_labels, val_set, test_set, get_lr, get_probe, 
                 break
             lr = get_lr()
             if lr != last_lr:
-                emit("log", f"   learning rate -> {lr:.1e}")
+                emit("log", f"LEARNING RATE CHANGED TO {lr:.1e}: THE ROBOT NOW MAKES "
+                            f"{'BIGGER' if lr > last_lr else 'SMALLER'} WEIGHT ADJUSTMENTS EACH STEP.")
                 last_lr = lr
             for g in opt.param_groups:
                 g["lr"] = lr
@@ -159,7 +160,7 @@ def train_model(train_imgs, train_labels, val_set, test_set, get_lr, get_probe, 
             correct += (out.argmax(1) == yb).sum().item()
             seen += len(yb)
         if stopped:
-            emit("log", f"Training stopped by player during epoch {epoch}.")
+            emit("log", f"TRAINING STOPPED BY THE PLAYER DURING EPOCH {epoch}.")
             break
 
         dw = [((w - p).norm() / p.norm()).item() for w, p in zip(block_weights(model), prev_w)]

@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import (JSON, BigInteger, DateTime, ForeignKey, Integer, LargeBinary,
+from sqlalchemy import (JSON, BigInteger, DateTime, Float, ForeignKey, Integer, LargeBinary,
                         String, Text, create_engine)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -20,7 +20,7 @@ class Game(Base):
     __tablename__ = 'game_sessions'
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     seed: Mapped[int] = mapped_column(BigInteger)
-    version: Mapped[str] = mapped_column(String(40), default='lava-web-v1')
+    version: Mapped[str] = mapped_column(String(40), default='lava-web-v2-analytics')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     training_status: Mapped[str] = mapped_column(String(20), default='ready')
@@ -68,6 +68,29 @@ class HelpOpen(Base):
     session_id: Mapped[str] = mapped_column(ForeignKey('game_sessions.id', ondelete='CASCADE'), index=True)
     topic: Mapped[str] = mapped_column(String(60))
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class LearningRateAdjustment(Base):
+    __tablename__ = 'lr_adjustments'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey('game_sessions.id', ondelete='CASCADE'), index=True)
+    value: Mapped[float] = mapped_column(Float)
+    exponent: Mapped[float] = mapped_column(Float)
+    settled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class TryClick(Base):
+    __tablename__ = 'try_clicks'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey('game_sessions.id', ondelete='CASCADE'), index=True)
+    training_run_id: Mapped[str | None] = mapped_column(ForeignKey('training_runs.id'))
+    kind: Mapped[str] = mapped_column(String(12))
+    item_name: Mapped[str] = mapped_column(String(80))
+    predicted_class: Mapped[int] = mapped_column(Integer)
+    confidence: Mapped[float] = mapped_column(Float)
+    destination: Mapped[str] = mapped_column(String(160))
+    correct: Mapped[bool | None]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 def make_database(url=None):

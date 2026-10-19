@@ -4,13 +4,15 @@ import os
 import unittest
 from pathlib import Path
 from uuid import uuid4
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select, text
 
 from backend import cnn
-from backend.database import Game, HelpOpen, SortAction, TrainingRun
+from backend.database import Game, HelpOpen, LearningRateAdjustment, SortAction, TrainingRun, TryClick
 from backend.main import create_app
+from backend.stats_report import collect_report, export_csv
 
 
 class WebTests(unittest.TestCase):
@@ -95,6 +97,48 @@ class WebTests(unittest.TestCase):
         self.assertEqual(result['summary']['score'], 0)
         self.assertEqual(self.client.post(self.path + '/train', json={}).status_code, 422)
 
+    def test_learning_rate_settlements_are_validated_and_safe_to_retry(self):
+        event = {'event_id': str(uuid4()), 'exponent': -2.5}
+        for _ in range(2):
+            self.assertEqual(self.client.post(self.path + '/learning-rate', json=event).status_code, 201)
+        self.assertEqual(self.client.post(self.path + '/learning-rate', json={**event, 'exponent': -2}).status_code, 409)
+        self.assertEqual(self.client.post(self.path + '/learning-rate', json={**event, 'exponent': 0}).status_code, 422)
+        with TestClient(create_app(self.url)):
+            with self.app.state.Session() as db:
+                rates = list(db.scalars(select(LearningRateAdjustment)))
+                self.assertEqual(len(rates), 1)
+                self.assertAlmostEqual(rates[0].value, 10 ** -2.5)
+                self.assertEqual(rates[0].session_id, self.game['id'])
+
+    def test_new_item_analytics_preserve_ungradable_results_and_export_without_images(self):
+        self.assertEqual(self.client.post(self.path + '/try-item', json={}).status_code, 409)
+        with self.app.state.Session.begin() as db:
+            game = db.get(Game, self.game['id'])
+            game.training_status, game.model_weights = 'done', b'test weights'
+        familiar = dict(name='New can', image='not exported', probabilities=[.9, .05, .05],
+                        destination='Recycling', has_valid_bin=True)
+        novel = dict(name='Battery', image='not exported', probabilities=[.1, .2, .7],
+                     destination='Special collection', has_valid_bin=False)
+        with patch('backend.cnn.try_item', side_effect=[familiar, novel]):
+            for kind in ('false', 'true'):
+                self.assertEqual(self.client.post(self.path + '/try-item?novel=' + kind, json={}).status_code, 200)
+        with self.app.state.Session() as db:
+            clicks = list(db.scalars(select(TryClick).order_by(TryClick.created_at)))
+            self.assertEqual([click.kind for click in clicks], ['familiar', 'never_seen'])
+            self.assertEqual([click.correct for click in clicks], [True, None])
+            self.assertAlmostEqual(clicks[-1].confidence, .7)
+        self.send(0, 0)
+        self.send(1, outcome='missed')
+        report = collect_report(self.app.state.Session)
+        self.assertEqual(report['dataset_by_game'][1][0]['missed'], 1)
+        self.assertEqual(report['sort_actions'][1][0]['chosen_bin'], 'Recycling')
+        self.assertEqual(len(report['try_clicks'][1]), 2)
+        self.assertNotIn('model_weights', report['game_sessions'][0])
+        output = Path(self.folder.name) / 'export'
+        export_csv(report, output)
+        self.assertTrue((output / 'try_clicks.csv').exists())
+        self.assertNotIn('not exported', (output / 'try_clicks.csv').read_text())
+
     def test_partial_dataset_real_training_and_saved_model_work_after_restart(self):
         expected = self.expected()
         for i in range(30):
@@ -115,6 +159,9 @@ class WebTests(unittest.TestCase):
             response = restarted.post(self.path + '/try-item?novel=true', json={})
             self.assertEqual(response.status_code, 200, response.text)
             self.assertAlmostEqual(sum(response.json()['probabilities']), 1, places=5)
+        with self.app.state.Session() as db:
+            click = db.scalar(select(TryClick))
+            self.assertEqual(click.training_run_id, db.get(Game, self.game['id']).training_run_id)
         # A second run gets a separate research record instead of overwriting the first.
         self.assertEqual(self.client.post(self.path + '/train', json={'epochs': 3}).status_code, 202)
         with self.app.state.Session() as db:

@@ -6,7 +6,7 @@ the shared matplotlib font settings (mpl_size) used by every retro chart.
 Columns: RGB input -> the most active filters (firing neurons) of each conv
 block -> class probabilities.
   - square glow      = how strongly a neuron fires
-  - line color       = weight sign (green excitatory, red inhibitory)
+  - line color       = weight sign (green positive = boosts, red negative = lowers)
   - line brightness  = signal actually flowing (|weight| x source firing)
 """
 import numpy as np
@@ -18,7 +18,7 @@ from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 
-from config import (CAT_COLORS, CATEGORIES, CHANNELS, EXCITE, INHIBIT, PICO, PIXEL_FONTS,
+from config import (CAT_COLORS, CATEGORIES, CHANNELS, NEGATIVE, PICO, PIXEL_FONTS, POSITIVE,
                     RGB_COLORS, SHOW_PER_BLOCK)
 from sprites import sprite
 
@@ -81,16 +81,16 @@ class NetworkView:
         ty = H - 0.06 - self.TITLE_H / 2
         ax.text(0.3, ty, (note or "SYNAPTIC VIEW").upper(), color=PICO["white"],
                 fontsize=mpl_size(9.5), va="center")
-        for x0, col, lab in [(W - 3.6, EXCITE, "EXCITATORY +"), (W - 1.85, INHIBIT, "INHIBITORY -")]:
+        for x0, col, lab in [(W - 4.1, POSITIVE, "+ POSITIVE (BOOSTS)"), (W - 2.05, NEGATIVE, "- NEGATIVE (LOWERS)")]:
             self._square(x0, ty, 0.07, fc=col, ec="none")
             ax.text(x0 + 0.16, ty, lab, color=PICO["light_gray"], fontsize=mpl_size(8), va="center")
 
     def _headers(self, n_cols, dw):
-        heads = ["INPUT"] + [f"BLOCK {i + 1}" for i in range(len(CHANNELS))] + ["SOFTMAX"]
-        subs = (["RGB"] + [f"TOP {min(SHOW_PER_BLOCK, c)}/{c}" for c in CHANNELS]
-                + [f"{len(CATEGORIES)} CLASSES"])
+        heads = ["INPUT"] + [f"BLOCK {i + 1}" for i in range(len(CHANNELS))] + ["ANSWER"]
+        subs = (["COLORS"] + [f"TOP {min(SHOW_PER_BLOCK, c)} OF {c}" for c in CHANNELS]
+                + ["BIN SCORES"])
         if dw is not None:
-            subs = [subs[0]] + [f"{t}  DW {d:.0e}" for t, d in zip(subs[1:-1], dw)] + [subs[-1]]
+            subs = [subs[0]] + [f"{t}  CHANGE {d:.0e}" for t, d in zip(subs[1:-1], dw)] + [subs[-1]]
         for c in range(n_cols):
             self.ax.text(self.COL_X[c], self.H - 0.72, heads[c], color=PICO["yellow"],
                          fontsize=mpl_size(9.5), ha="center", va="center")
@@ -115,7 +115,7 @@ class NetworkView:
                     i, j = np.unravel_index(flat, strength.shape)
                     st = float(strength[i, j])
                     segs.append([(xs, pos[k][i]), (xd, pos[k + 1][j])])
-                    cols.append(to_rgba(EXCITE if w[i, j] >= 0 else INHIBIT, 0.07 + 0.85 * st))
+                    cols.append(to_rgba(POSITIVE if w[i, j] >= 0 else NEGATIVE, 0.07 + 0.85 * st))
                     widths.append(0.5 + 2.5 * st)
             self.ax.add_collection(LineCollection(segs, colors=cols, linewidths=widths,
                                                   capstyle="butt", zorder=1))

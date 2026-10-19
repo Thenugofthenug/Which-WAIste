@@ -30,7 +30,7 @@ class TitleScreen(RetroFrame):
 
         self.blink_lbl = self.label(self, "PRESS START", 18, fg=ACCENT)
         self.blink_lbl.pack(pady=(0, 16))
-        self.button(self, "START", app.new_game, 16, bg=PICO["green"]).pack()
+        self.button(self, "START", app.start_from_title, 16, bg=PICO["green"]).pack()
         self._blink_job = None
         self._blink(True)
 

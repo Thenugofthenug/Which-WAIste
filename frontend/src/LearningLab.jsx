@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import HomeRobot from './HomeRobot'
 import EpochFlow from './EpochFlow'
@@ -19,12 +19,32 @@ function Curve({ history, loss = false }) {
     </svg><figcaption><span className="train-key">■ Training</span> <span className="val-key">■ Validation</span>{!history.length && ' · Waiting for training'}</figcaption></figure>
 }
 
-export default function LearningLab({ game, setGame, view, saving, track }) {
+export default function LearningLab({ game, setGame, view, saving, track, onRateSettled }) {
   const [epochs, setEpochs] = useState(3), [rate, setRate] = useState(-3)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const training = game.training, results = training.results
   const item = results?.predictions[0]
+  const rateTimer = useRef(null), pendingRate = useRef(null), recordRate = useRef(onRateSettled)
+  useEffect(() => { recordRate.current = onRateSettled }, [onRateSettled])
+  function flushRate() {
+    clearTimeout(rateTimer.current)
+    if (pendingRate.current !== null) {
+      recordRate.current?.(pendingRate.current)
+      pendingRate.current = null
+    }
+  }
+  function changeRate(exponent) {
+    setRate(exponent)
+    pendingRate.current = exponent
+    clearTimeout(rateTimer.current)
+    rateTimer.current = setTimeout(flushRate, 700)
+  }
+  useEffect(() => {
+    if (view !== 'train') flushRate()
+  }, [view])
+  useEffect(() => () => flushRate(), [])
   async function train() {
+    flushRate()
     setError(''); setBusy(true)
     try {
       await api(`/sessions/${game.id}/train`, { epochs, learning_rate: 10 ** rate })
@@ -48,7 +68,7 @@ export default function LearningLab({ game, setGame, view, saving, track }) {
   </div>{view === 'train' && <EpochFlow game={game} />}</div>
     <div className="training-grid"><section className="inset training-controls"><h3>Controls</h3>
       <label>Training run <select value={epochs} disabled={busy || training.status === 'running'} onChange={e => setEpochs(Number(e.target.value))}><option value="3">3 epochs · quick run</option><option value="10">10 epochs</option><option value="50">50 epochs · full run</option></select></label>
-      <label title="Controls the size of weight updates.">Learning rate: {(10 ** rate).toExponential(1)}<input type="range" min="-4" max="-1" step=".1" value={rate} disabled={training.status === 'running'} onChange={e => setRate(Number(e.target.value))} /></label>
+      <label title="Controls the size of weight updates.">Learning rate: {(10 ** rate).toExponential(1)}<input type="range" min="-4" max="-1" step=".1" value={rate} disabled={training.status === 'running'} onChange={e => changeRate(Number(e.target.value))} /></label>
       <button className="green training-button" disabled={saving || busy || training.status === 'running'} onClick={train}>{training.status === 'running' ? 'Robot is learning…' : training.status === 'done' || results ? 'RE-TRAIN' : 'Start training'}</button>
       {training.status !== 'done' && <p className="status" role="status">{training.status === 'running' ? `Epoch ${training.history.length} / ${training.epochs}` : training.status.toUpperCase()}</p>}
       {results && <><p className="accuracy-result">{percent(results.before_accuracy)} → {percent(results.test_accuracy)}</p><p>Same held-out test views. Best epoch: {results.best_epoch}.</p></>}

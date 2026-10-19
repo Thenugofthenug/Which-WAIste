@@ -5,6 +5,7 @@ import tkinter as tk
 
 import numpy as np
 
+from analytics import stats_for
 from config import ACCENT, CATEGORIES, MUTED, PICO
 from items import ITEM_TYPES, NOVEL_TYPES
 from model import probe_model
@@ -18,12 +19,20 @@ class TryTab(RetroFrame):
         super().__init__(master, lab.fonts)
         self.lab = lab
         self.rng = random.Random()
+        self.stats = stats_for(lab.app)
         self.tally = {"familiar": [0, 0], "novel_label": [0, 0], "forced": 0, "forced_conf": []}
+
+        # bottom-right navigation (packed first so it always stays visible)
+        bar = tk.Frame(self, bg=self.cget("bg"))
+        bar.pack(side="bottom", fill="x", pady=(8, 0))
+        self.button(bar, "PLAY AGAIN", lab.app.new_game, 13, bg=PICO["green"]).pack(side="right")
+        self.button(bar, "< BACK TO TRAINING", lambda: lab.show_tab("train"), 13,
+                    bg=PICO["light_gray"]).pack(side="right", padx=8)
 
         outer, body = self.panel(self, "TRY NEW ITEMS")
         outer.pack(fill="both", expand=True)
         self.label(body, "THE NETWORK MAPS ANY PICTURE TO ONE OF ITS LABELS. IT HAS NO \"I DON'T KNOW\" "
-                         "OPTION: SOFTMAX ALWAYS SPLITS 100% ACROSS THE BINS IT WAS TRAINED ON. TRY FAMILIAR "
+                         "OPTION: ITS ANSWER SCORES ALWAYS ADD UP TO 100% ACROSS THE BINS IT WAS TRAINED ON. TRY FAMILIAR "
                          "ITEMS AND NEVER-SEEN ITEMS - SOME BELONG IN BINS THE MODEL HAS NO LABEL FOR.",
                    10, wraplength=1240, justify="left").pack(anchor="w")
         self.info_lbl = self.label(body, "", 9, fg=MUTED, justify="left")
@@ -105,6 +114,8 @@ class TryTab(RetroFrame):
                                     f"{CATEGORIES[pred].upper()} ({conf:.0%})")
         self.explain_lbl.config(text=msg)
         self.view.show(img, viz, probs, note=note)
+        correct = None if (novel and true_idx is None) else ok      # no right bin exists -> ungradable
+        self.stats.try_click("never_seen" if novel else "familiar", name, pred, conf, correct)
         self.update_tally()
 
     def update_tally(self):

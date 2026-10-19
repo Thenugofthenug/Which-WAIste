@@ -15,7 +15,9 @@ Files:
   network_view.py    - the retro "synaptic view" diagram
   widgets.py         - retro buttons, progress bar, panels, RetroFrame
   gui_app.py         - App: screen switching and the training-thread bridge
-  screens/           - title, game, lab (tab host), train_tab, try_tab
+  screens/           - title, player (name), briefing, game, lab, train_tab, try_tab
+  analytics.py       - per-player usage stats, saved to a local SQLite file
+  stats_report.py    - summarize the stats or export them as CSV spreadsheets
 
 Requirements:  pip install torch numpy pillow matplotlib
 Optional:      install the free "Press Start 2P" font for full 8-bit text

@@ -9,3 +9,8 @@
 .env.*
 **/tests
 *.zip
+**/*.db
+**/*.db-shm
+**/*.db-wal
+tmp
+stats_csv
