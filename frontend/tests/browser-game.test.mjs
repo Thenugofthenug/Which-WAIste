@@ -19,6 +19,7 @@ const server = await createServer({ root: fileURLToPath(new URL('../', import.me
 const { default: App } = await server.ssrLoadModule('/src/App.jsx')
 const { default: Conveyor } = await server.ssrLoadModule('/src/Conveyor.jsx')
 const { default: HomePictures } = await server.ssrLoadModule('/src/HomePictures.jsx')
+const { default: RobotDetective } = await server.ssrLoadModule('/src/RobotDetective.jsx')
 const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII='
 const game = { id: '11111111-1111-4111-8111-111111111111', items: Array.from({ length: 30 }, (_, index) => ({ index, name: 'Item ' + index, image })),
   actions: [], summary: { resolved: 0, correct: 0, wrong: 0, missed: 0, score: 0, streak: 0, best_streak: 0 }, training: { status: 'ready', history: [] } }
@@ -34,6 +35,18 @@ function button(text) {
   return found
 }
 async function click(element) { await React.act(async () => element.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))) }
+// Keep existing slow-speed regression scenarios at their original timing.
+async function startOrIncrease() {
+  const start = [...container.querySelectorAll('button')].find(element => element.textContent === 'Start sorting at speed 2')
+  if (start) {
+    await click(start)
+    const down = container.querySelector('[aria-label="Decrease belt speed"]')
+    await click(down)
+  } else {
+    const up = container.querySelector('[aria-label="Increase belt speed"]')
+    await click(up)
+  }
+}
 async function drive(count) {
   for (let i = 0; i < count && frames.size; i++) await React.act(async () => {
     const callbacks = [...frames.values()]; frames.clear(); clock += 100
@@ -114,7 +127,7 @@ test('belt never stops for missed items; restoring excludes resolved items', () 
   assert.equal(store.getSnapshot().actors.length, 0)
 })
 
-test('digital speed control starts at 0, starts the belt at 1 and pauses it at 0', async () => {
+test('splash starts the belt at 2; speed controls still adjust and pause it at 0', async () => {
   const actions = []
   const props = { game, paused: false, onResolve: (...args) => actions.push(args), help: () => {}, saving: 0 }
   await mount(Conveyor, props)
@@ -123,7 +136,7 @@ test('digital speed control starts at 0, starts the belt at 1 and pauses it at 0
   const display = () => container.querySelector('.belt-speed-control [role="img"]').getAttribute('aria-label')
   assert.equal(container.querySelector('select'), null)
   assert.equal([...container.querySelectorAll('button')].some(button => /Start belt|Pause belt/.test(button.textContent)), false)
-  assert.equal(display(), 'Belt speed 0 of 3')
+  assert.equal(display(), 'Belt speed 2 of 3')
   assert.equal(down().getAttribute('aria-disabled'), 'true')
   assert.equal(frames.size, 0)
   assert.equal(container.querySelector('.lava-tile').style.animationPlayState, 'running')
@@ -134,9 +147,11 @@ test('digital speed control starts at 0, starts the belt at 1 and pauses it at 0
   assert.equal(rightTV.getAttribute('width'), '252')
   assert.equal(rightTV.getAttribute('height'), '275')
   await click(down())
-  assert.equal(display(), 'Belt speed 0 of 3')
+  assert.equal(display(), 'Belt speed 2 of 3')
   await click(up())
-  assert.equal(display(), 'Belt speed 1 of 3')
+  assert.equal(frames.size, 0, 'Arrows cannot bypass the instruction screen')
+  await click(button('Start sorting at speed 2'))
+  assert.equal(display(), 'Belt speed 2 of 3')
   assert.equal(frames.size, 1)
   assert.ok(container.querySelector('.robot-awake'))
   assert.ok(container.querySelector('.robot-floating'))
@@ -180,7 +195,7 @@ test('two seconds at speed zero stops the robot and offers an in-place phase res
   const down = () => container.querySelector('[aria-label="Decrease belt speed"]')
   await React.act(async () => context.mock.timers.tick(3000))
   assert.equal(container.querySelector('.robot-resort'), null)
-  await click(up())
+  await startOrIncrease()
   await React.act(async () => context.mock.timers.tick(5000))
   await click(down())
   await React.act(async () => context.mock.timers.tick(1999))
@@ -207,7 +222,7 @@ test('two seconds at speed zero stops the robot and offers an in-place phase res
   assert.equal(container.querySelector('.title-screen'), null)
   assert.equal(container.querySelector('.robot-resort'), null)
   assert.equal(container.querySelector('.robot-idle'), null)
-  assert.equal(container.querySelector('.belt-speed-control [role="img"]').getAttribute('aria-label'), 'Belt speed 0 of 3')
+  assert.equal(container.querySelector('.belt-speed-control [role="img"]').getAttribute('aria-label'), 'Belt speed 2 of 3')
   assert.deepEqual([...container.querySelectorAll('.bin-item-count')].map(text => text.textContent), ['ITEMS: 0', 'ITEMS: 0', 'ITEMS: 0'])
 })
 
@@ -219,7 +234,7 @@ test('SVG guidance disappears five seconds after starting while item and bin lab
   await React.act(async () => context.mock.timers.tick(6000))
   assert.ok(svg().querySelector('.lava-arrow'))
   assert.equal(svg().querySelector('.robot-hover-lines'), null)
-  await click(container.querySelector('[aria-label="Increase belt speed"]'))
+  await startOrIncrease()
   assert.ok(svg().querySelector('.robot-floating'))
   assert.ok(svg().querySelector('.robot-hover-lines'))
   await React.act(async () => context.mock.timers.tick(4999))
@@ -227,7 +242,7 @@ test('SVG guidance disappears five seconds after starting while item and bin lab
   assert.ok(svg().querySelector('.lava-arrow'))
   await React.act(async () => context.mock.timers.tick(1))
   assert.equal(svg().querySelector('.lava-arrow'), null)
-  assert.deepEqual([...svg().querySelectorAll('text')].map(text => text.textContent), ['BELT SPEED', 'ITEMS: 0', 'RECYCLING', 'ITEMS: 0', 'COMPOST', 'ITEMS: 0', 'LANDFILL', 'Item 0'])
+  assert.deepEqual([...svg().querySelectorAll('text')].map(text => text.textContent), ['BELT SPEED', 'LAVA · LOST PRACTICE EXAMPLES', 'ITEMS: 0', 'RECYCLING', 'ITEMS: 0', 'COMPOST', 'ITEMS: 0', 'LANDFILL', 'Item 0'])
   assert.ok(svg().querySelector('.pixel-robot'))
   assert.ok(svg().querySelector('.robot-floating'))
   assert.ok(svg().querySelector('.robot-pacing'))
@@ -239,7 +254,7 @@ test('SVG guidance disappears five seconds after starting while item and bin lab
   assert.deepEqual(hoverLines.map(line => Number(line.getAttribute('x2')) - Number(line.getAttribute('x1'))), [80, 56, 32])
   await click(container.querySelector('[aria-label="Decrease belt speed"]'))
   assert.ok(container.querySelector('.robot-awake'))
-  await click(container.querySelector('[aria-label="Increase belt speed"]'))
+  await startOrIncrease()
   assert.equal(svg().querySelector('.lava-arrow'), null)
   await React.act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Conveyor, { ...props, key: 'new-round' }))))
   assert.ok(svg().querySelector('.lava-arrow'))
@@ -253,7 +268,7 @@ test('completed sorting settles the robot before showing saved mission totals', 
     summary: { ...game.summary, resolved: 29, correct: 29, score: 290, streak: 29, best_streak: 29 } }
   const props = { game: almostDone, paused: false, onResolve: () => {}, help: () => {}, saving: 0 }
   await mount(Conveyor, props)
-  await click(container.querySelector('[aria-label="Increase belt speed"]'))
+  await startOrIncrease()
   await React.act(async () => container.querySelector('[aria-label="Select Item 29"]').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
   await click(button('Recycling'))
   assert.equal(container.querySelector('.robot-summary'), null)
@@ -350,7 +365,7 @@ test('bin counters count each drop immediately, replay its symbol, and restore s
   const select = async index => React.act(async () => container.querySelector(`[aria-label="Select Item ${index}"]`).dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
   assert.deepEqual(counts(), ['ITEMS: 0', 'ITEMS: 0', 'ITEMS: 0'])
   assert.equal(container.querySelector('.bin-sort-logo'), null)
-  await click(container.querySelector('[aria-label="Increase belt speed"]'))
+  await startOrIncrease()
   await select(0)
   await click(button('Recycling'))
   assert.deepEqual(counts(), ['ITEMS: 1', 'ITEMS: 0', 'ITEMS: 0'])
@@ -394,7 +409,7 @@ test('memory records pictures and outcomes, then scrolls after four entries and 
   assert.ok(table().querySelector('.memory-flame'))
   assert.equal(table().querySelectorAll('.bin-symbol').length, 3)
   assert.equal(viewport().scrollTop, 0)
-  await click(container.querySelector('[aria-label="Increase belt speed"]'))
+  await startOrIncrease()
   await React.act(async () => container.querySelector('[aria-label="Select Item 4"]').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
   await click(button('Recycling'))
   assert.equal(table().querySelectorAll('.memory-row').length, 5)
@@ -410,7 +425,7 @@ test('memory records pictures and outcomes, then scrolls after four entries and 
 test('moving items fall into lava exactly once and successful drag selects the correct bin', async () => {
   const actions = []
   await mount(Conveyor, { game, paused: false, onResolve: (...args) => actions.push(args), help: () => {}, saving: 0 })
-  await click(container.querySelector('[aria-label="Increase belt speed"]'))
+  await startOrIncrease()
   await drive(30)
   const svg = container.querySelector('.conveyor-svg')
   svg.createSVGPoint = () => ({ x: 0, y: 0, matrixTransform() { return { x: this.x, y: this.y } } })
@@ -438,7 +453,7 @@ test('help topics are saved and closing the guide resumes a moving game', async 
   }
   await mount(App)
   await click(button('START'))
-  await click(container.querySelector('[aria-label="Increase belt speed"]'))
+  await startOrIncrease()
   assert.equal(frames.size, 1)
   await click(button('? Learning tips'))
   assert.equal(frames.size, 0)
@@ -476,7 +491,7 @@ test('failed action saves pause the belt and retry sends the same pending event'
   }
   await mount(App)
   await click(button('START'))
-  await click(container.querySelector('[aria-label="Increase belt speed"]'))
+  await startOrIncrease()
   await drive(80)
   assert.match(container.querySelector('[role="alert"]').textContent, /Offline/)
   assert.equal(frames.size, 0)
@@ -507,7 +522,7 @@ test('TV feedback names incorrect bins and uses each of the three correct respon
   }
   await mount(App)
   await click(button('START'))
-  await click(container.querySelector('[aria-label="Increase belt speed"]'))
+  await startOrIncrease()
   const outcomes = [
     ['Compost', 0, 'Compost, really? I thought that was Recycling'],
     ['Recycling', 0, 'Nice +10'],
@@ -606,7 +621,7 @@ test('stage navigation stays in board controls across sorting, training and expl
   assert.equal(button('2 · Train').getAttribute('aria-current'), 'step')
   assert.equal(navigation.querySelector('.stage-ready'), button('3 · Explore'))
   await click(button('3 · Explore'))
-  assert.equal(container.querySelector('.lab-panel .section-heading').textContent, '')
+  assert.equal(container.querySelector('.lab-panel .section-heading h2').textContent, 'Robot Detective')
   assert.ok(container.querySelector('.lab-panel .section-heading .heading-robot-layer'))
   assert.equal(navigation.closest('[hidden]'), null)
   assert.equal(button('3 · Explore').getAttribute('aria-current'), 'step')
@@ -617,7 +632,7 @@ test('stage navigation stays in board controls across sorting, training and expl
   assert.equal(navigation.querySelector('.stage-ready'), button('2 · Train'))
 })
 
-test('START opens the conveyor directly and leaves the belt ready to start', async () => {
+test('START opens the conveyor instructions and only its start button moves the belt', async () => {
   globalThis.fetch = async () => ({ ok: true, json: async () => structuredClone(game) })
   await mount(App)
   await click(button('START'))
@@ -626,7 +641,7 @@ test('START opens the conveyor directly and leaves the belt ready to start', asy
   assert.equal(container.querySelector('.tv-score').hidden, true)
   assert.equal(container.querySelector('.mission-strip'), null)
   assert.equal(container.querySelector('.stage-ready'), null)
-  assert.equal(container.querySelector('.belt-start-hint').textContent, 'Set BELT SPEED to 1 to start')
+  assert.equal(container.querySelector('.belt-start-hint').textContent, 'LEARNING BREAK')
   assert.equal(container.querySelector('.belt-start-hint').getAttribute('x'), '848')
   assert.equal(container.querySelector('.belt-start-hint').getAttribute('y'), '185')
   assert.equal(container.textContent.includes('READY WHEN YOU ARE'), false)
@@ -634,15 +649,225 @@ test('START opens the conveyor directly and leaves the belt ready to start', asy
   assert.equal(container.querySelector('.tv-feedback p'), null)
   assert.equal(container.querySelector('.feedback'), null)
   assert.ok(container.querySelector('[aria-label="Conveyor sorting game"]'))
-  assert.equal(container.querySelector('[role="dialog"]'), null)
-  assert.equal(container.querySelector('[aria-label="Increase belt speed"]').getAttribute('aria-disabled'), 'false')
+  assert.match(container.querySelector('[role="dialog"]').textContent, /Your bin choice becomes its label/)
+  assert.equal(container.querySelector('[aria-label="Increase belt speed"]').getAttribute('aria-disabled'), 'true')
   assert.equal(frames.size, 0)
-  await click(container.querySelector('[aria-label="Increase belt speed"]'))
+  await startOrIncrease()
   assert.equal(frames.size, 1)
   assert.equal(container.querySelector('.tv-score').hidden, true)
   await click(button('Return to start'))
   await click(button('START'))
-  assert.equal(container.querySelector('[role="dialog"]'), null)
-  assert.equal(container.querySelector('[aria-label="Increase belt speed"]').getAttribute('aria-disabled'), 'false')
+  assert.ok(container.querySelector('[role="dialog"]'))
+  assert.equal(container.querySelector('[aria-label="Increase belt speed"]').getAttribute('aria-disabled'), 'true')
   assert.equal(frames.size, 0)
+})
+
+test('three consecutive misses pause for learning help and resume at speed 1 without extra misses', async () => {
+  const actions = []
+  await mount(Conveyor, { game, paused: false, onResolve: (...args) => actions.push(args), saving: 0 })
+  assert.ok(container.querySelector('[role="dialog"]'))
+  assert.equal(frames.size, 0)
+  await click(button('Start sorting at speed 2'))
+  await drive(64)
+  assert.equal(actions.length, 2)
+  assert.equal(container.querySelector('[role="dialog"]'), null)
+  await drive(14)
+  assert.equal(actions.length, 3)
+  assert.ok(actions.every(action => action[1] === 'missed' && action[2] === null && action[3] === 'NORMAL'))
+  const prompt = container.querySelector('[role="dialog"]')
+  assert.match(prompt.textContent, /Three items/)
+  assert.match(prompt.textContent, /no labels/)
+  assert.match(prompt.textContent, /fewer examples/)
+  assert.equal(container.querySelector('.belt-speed-control [role="img"]').getAttribute('aria-label'), 'Belt speed 1 of 3')
+  assert.equal(container.querySelectorAll('.lava-spark').length, 14)
+  const actorPositions = () => [...container.querySelectorAll('.conveyor-svg > g[aria-label^="Select"]')].map(item => item.getAttribute('transform'))
+  const frozen = actorPositions()
+  await drive(30)
+  assert.equal(actions.length, 3, 'Reading the prompt must not lose more items')
+  assert.deepEqual(actorPositions(), frozen)
+  assert.equal(container.querySelectorAll('.lava-spark').length, 0, 'The splash finishes while the belt is paused')
+  assert.equal(frames.size, 0)
+  await click(button('Continue at speed 1'))
+  assert.equal(container.querySelector('[role="dialog"]'), null)
+  await drive(30)
+  assert.equal(actions.length, 4)
+  assert.equal(actions.at(-1)[3], 'SLOW', 'Saved actions reflect the reduced speed')
+  assert.equal(new Set(actions.map(action => action[0].index)).size, actions.length)
+})
+
+test('the slowdown appears once per round even after increasing speed, and resets for a new round', async () => {
+  const actions = []
+  const props = { game, paused: false, onResolve: (...args) => actions.push(args), saving: 0 }
+  await mount(Conveyor, props)
+  await click(button('Start sorting at speed 2'))
+  await drive(78)
+  assert.equal(actions.length, 3)
+  await click(button('Continue at speed 1'))
+  await click(container.querySelector('[aria-label="Increase belt speed"]'))
+  await click(container.querySelector('[aria-label="Increase belt speed"]'))
+  await drive(80)
+  assert.equal(container.querySelector('[role="dialog"]'), null, 'Later consecutive misses must not repeat the warning')
+  assert.equal(container.querySelector('.belt-speed-control [role="img"]').getAttribute('aria-label'), 'Belt speed 3 of 3')
+  assert.ok(actions.length >= 6, 'Items continue falling after the first warning')
+  assert.ok(actions.slice(3).every(action => action[1] === 'missed' && action[2] === null && action[3] === 'FAST'), 'Later misses still record the selected speed')
+  const nextGame = { ...game, id: '22222222-2222-4222-8222-222222222222' }
+  await React.act(async () => root.render(React.createElement(React.StrictMode, null,
+    React.createElement(Conveyor, { ...props, key: nextGame.id, game: nextGame }))))
+  await click(button('Start sorting at speed 2'))
+  await drive(78)
+  assert.ok(button('Continue at speed 1'), 'A new round gets its own slowdown warning')
+})
+
+test('a bin drop resets the consecutive miss counter and lava stays visible after guidance hides', async () => {
+  const actions = []
+  await mount(Conveyor, { game, paused: false, onResolve: (...args) => actions.push(args), saving: 0 })
+  const pool = container.querySelector('.lava-pool rect[stroke]')
+  assert.ok(Number(pool.getAttribute('width')) > 260)
+  assert.ok(Number(pool.getAttribute('height')) > 52)
+  assert.ok(container.querySelector('.lava-ember'))
+  await click(button('Start sorting at speed 2'))
+  await drive(64)
+  assert.equal(actions.length, 2)
+  await React.act(async () => container.querySelector('[aria-label="Select Item 2"]').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  await click(button('Recycling'))
+  assert.equal(actions[2][1], 'sorted')
+  await drive(30)
+  assert.equal(actions.filter(action => action[1] === 'missed').length, 3)
+  assert.equal(container.querySelector('[role="dialog"]'), null, 'One miss after a successful drop does not slow the game')
+  await drive(15)
+  assert.equal(container.querySelector('[role="dialog"]'), null)
+  await drive(15)
+  assert.ok(button('Continue at speed 1'))
+  assert.ok(container.querySelector('.lava-pool'))
+})
+
+test('the final missed item does not block mission completion behind a slowdown prompt', async () => {
+  const actions = []
+  const almostDone = { ...game, actions: game.items.slice(0, 27).map(item => ({ index: item.index, outcome: 'sorted', chosen_class: 0 })),
+    summary: { ...game.summary, resolved: 27, correct: 27, score: 270 } }
+  const props = { game: almostDone, paused: false, onResolve: (...args) => actions.push(args), saving: 0 }
+  await mount(Conveyor, props)
+  await click(button('Start sorting at speed 2'))
+  await drive(90)
+  assert.equal(actions.length, 3)
+  assert.equal(container.querySelector('[role="dialog"]'), null)
+  const done = { ...almostDone, summary: { ...almostDone.summary, resolved: 30, missed: 3 } }
+  await React.act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Conveyor, { ...props, game: done }))))
+  await drive(60)
+  assert.ok(container.querySelector('.belt-mission-actions.delivered'))
+  assert.equal(button('Phase 2 * TRAIN').disabled, false)
+  assert.equal(actions.length, 3)
+})
+
+function detectiveGame() {
+  const prediction = name => ({
+    name, image, label: 'Compost', guideline: 'Recycling', before: [.2, .5, .3], probabilities: [.8, .15, .05],
+    inspection: { input_image: image, rgb: [80, 120, 200], normalized: [-.373, -.059, .569],
+      layers: Array.from({ length: 4 }, (_, index) => ({ name: `Block ${index + 1}`, shape: [16, 32, 32],
+        maps: [{ channel: index * 2, image }, { channel: index * 2 + 1, image }] })) },
+    viz: { edges: [], layers: Array.from({ length: 6 }, (_, i) => ({ labels: i === 5 ? ['Recycling', 'Compost', 'Landfill'] : ['F1'], level: i === 5 ? [.8, .15, .05] : [.5], raw: i === 5 ? [.8, .15, .05] : [.5] })) },
+  })
+  return { ...game, summary: { ...game.summary, resolved: 30 }, training: { ...game.training, status: 'done',
+    results: { predictions: [prediction('Test can'), prediction('Test carton')] } } }
+}
+
+test('Robot Detective presents one task at a time and preserves the image and views when going back', async () => {
+  const completed = detectiveGame()
+  await mount(RobotDetective, { game: completed })
+  assert.equal(container.querySelector('.detective-heading h2').textContent, 'Robot Detective')
+  assert.equal(container.querySelector('.detective-task [role="status"]').textContent, 'Step 1 of 3')
+  assert.equal(button('← Back').disabled, true)
+  assert.ok(container.querySelector('.filters-box'))
+  assert.equal(button('Reveal bin scores').closest('[hidden]') !== null, true)
+  await click(button('Block 3'))
+  assert.ok(container.querySelector('[alt="Block 3 channel 4 response for Test can"]'))
+  await click(button('Pixels'))
+  assert.match(container.querySelector('.detective-pixels').textContent, /80, 120, 200/)
+  assert.match(container.querySelector('.detective-pixels').textContent, /-0.373, -0.059, 0.569/)
+  await click(button('Original'))
+  assert.ok(container.querySelector('[alt="Original test image: Test can"]'))
+  const select = container.querySelector('.detective-evidence select')
+  await React.act(async () => { select.value = '1'; select.dispatchEvent(new window.Event('change', { bubbles: true })) })
+  assert.equal(container.querySelector('.detective-item-image').alt, 'Test carton')
+  await click(button('Pixels'))
+  await click(button('Next: follow the decision →'))
+  assert.equal(container.querySelector('.detective-task [role="status"]').textContent, 'Step 2 of 3')
+  assert.equal(button('Reveal bin scores').closest('[hidden]'), null)
+  await click(button('Reveal bin scores'))
+  const after = container.querySelector('[aria-label="After training scores"]')
+  assert.deepEqual([...after.querySelectorAll('meter')].map(meter => meter.value), [.8, .15, .05])
+  assert.match(container.querySelector('.detective-pick').textContent, /Recycling.*80.0%/)
+  await click(button('Compare before & after'))
+  assert.deepEqual([...container.querySelectorAll('[aria-label="Before training scores"] meter')].map(meter => meter.value), [.2, .5, .3])
+  assert.match(container.querySelector('.detective-notes').textContent, /Your labelCompost/)
+  assert.match(container.querySelector('.detective-notes').textContent, /Common guidelineRecycling/)
+  await click(button('← Back'))
+  assert.equal(button('Pixels').getAttribute('aria-pressed'), 'true')
+  assert.equal(container.querySelector('.detective-item-image').alt, 'Test carton')
+  await click(button('Next: follow the decision →'))
+  assert.ok(button('Show after only'), 'Returning preserves the revealed comparison')
+})
+
+test('Robot Detective tests new images through the API, recovers from errors, and explains missing categories', async () => {
+  const completed = detectiveGame(), calls = []
+  let fail = true
+  globalThis.fetch = async (url, init) => {
+    calls.push([url, init.method])
+    if (fail) throw new Error('Connection interrupted')
+    const novel = url.endsWith('novel=true')
+    return { ok: true, json: async () => ({ ...completed.training.results.predictions[0], name: novel ? 'Battery' : 'New can',
+      has_valid_bin: !novel, destination: novel ? 'Special collection' : 'Recycling' }) }
+  }
+  await mount(RobotDetective, { game: completed })
+  await click(container.querySelectorAll('.detective-steps button')[2])
+  await click(container.querySelectorAll('.detective-test-buttons button')[1])
+  assert.match(container.querySelector('[role="alert"]').textContent, /Connection interrupted/)
+  assert.ok([...container.querySelectorAll('.detective-test-buttons button')].every(button => !button.disabled))
+  fail = false
+  await click(container.querySelectorAll('.detective-test-buttons button')[1])
+  assert.equal(container.querySelector('[role="alert"]'), null)
+  assert.equal(container.querySelector('.detective-item-image').alt, 'Battery')
+  assert.match(container.querySelector('.detective-test-result').textContent, /Special collection/)
+  assert.match(container.querySelector('.detective-caution').textContent, /None of the robot’s three bins is suitable/)
+  assert.deepEqual([...container.querySelectorAll('.detective-test-result meter')].map(meter => meter.value), [.8, .15, .05])
+  await click(container.querySelectorAll('.detective-test-buttons button')[0])
+  assert.equal(container.querySelector('.detective-item-image').alt, 'New can')
+  assert.equal(container.querySelector('.detective-caution'), null)
+  assert.ok(calls.every(([url, method]) => url.startsWith(`/api/sessions/${game.id}/try-item?novel=`) && method === 'POST'))
+  assert.ok(calls.at(-1)[0].endsWith('novel=false'))
+  await click(button('Close the case'))
+  assert.match(container.querySelector('.detective-case-notes').textContent, /Training adjusted weights/)
+  await click(button('Investigate again'))
+  assert.equal(container.querySelector('.detective-task [role="status"]').textContent, 'Step 1 of 3')
+})
+
+test('optional help records topic openings and the demonstration sliders do not change real CNN scores', async () => {
+  const topics = [], completed = detectiveGame()
+  await mount(RobotDetective, { game: completed, track: topic => topics.push(topic) })
+  const openHelp = async title => {
+    const details = [...container.querySelectorAll('details')].find(details => details.querySelector('summary').textContent === title)
+    await React.act(async () => { details.open = true; await new Promise(resolve => setTimeout(resolve, 0)) })
+    return details
+  }
+  await openHelp('What do these pictures mean?')
+  await openHelp('Tell me more about pixels')
+  await openHelp('Optional lab: experiment with weights')
+  assert.deepEqual(topics, ['filters', 'pixels', 'weights'])
+  await openHelp('Try this + extra help')
+  assert.deepEqual(topics, ['filters', 'pixels', 'weights', 'weights'], 'Nested help records its own opening once')
+  const experiment = container.querySelector('.detective-weight')
+  const before = [...experiment.querySelectorAll('meter')].map(meter => meter.value)
+  const slider = experiment.querySelectorAll('input')[1]
+  await React.act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(slider, '3')
+    slider.dispatchEvent(new window.Event('input', { bubbles: true }))
+  })
+  assert.notDeepEqual([...experiment.querySelectorAll('meter')].map(meter => meter.value), before)
+  assert.deepEqual(completed.training.results.predictions[0].probabilities, [.8, .15, .05])
+  await click(button('Next: follow the decision →'))
+  await openHelp('Open the real CNN diagram')
+  assert.equal(topics.at(-1), 'weights')
+  assert.ok(container.querySelector('.network-figure svg'))
+  await click(button('Reveal bin scores'))
+  assert.deepEqual([...container.querySelectorAll('[aria-label="After training scores"] meter')].map(meter => meter.value), [.8, .15, .05])
 })

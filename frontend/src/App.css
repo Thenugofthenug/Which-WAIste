@@ -113,6 +113,17 @@ button[aria-pressed='true'], .stage-nav button[aria-current] { border-color: var
 .memory-result { display: flex; width: 38px; height: 38px; align-items: center; justify-content: center; margin: auto; }
 .memory-result svg { display: block; }
 .lava-tile { animation: lava 1s steps(1) infinite; }
+.lava-pool { filter: drop-shadow(0 0 8px #ff6b0066); }
+.lava-ember { animation: lava-ember 1.5s steps(6) infinite; pointer-events: none; }
+.lava-spark { pointer-events: none; }
+@keyframes lava-ember { 0% { transform: translateY(8px); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(-55px); opacity: 0; } }
+.conveyor-prompt { width: min(100%, 720px); max-height: 90dvh; overflow-y: auto; padding: clamp(20px, 4vw, 38px); }
+.conveyor-prompt h2 { color: #00e436; line-height: 1.2; margin: 18px 0; font-size: clamp(22px, 3vw, 30px); }
+.conveyor-prompt p, .conveyor-prompt li { font-size: clamp(13px, 1.4vw, 16px); line-height: 1.65; }
+.conveyor-prompt ol { padding-left: 24px; }.conveyor-prompt li { padding-left: 6px; margin: 10px 0; }
+.conveyor-prompt button { display: block; width: 100%; margin-top: 24px; padding: 16px; font-weight: bold; font-size: 16px; }
+.prompt-symbol { color: #69f58e; font-size: 28px; font-weight: bold; margin: 20px 0; }.prompt-lava { color: #ffa300; }
+@media (prefers-reduced-motion: reduce) { .lava-ember { animation: none; opacity: .7; }.lava-pool { filter: none; } }
 .lava-arrow { animation: lava-arrow-flash 2s ease-in-out infinite; }
 @keyframes lava-arrow-flash { 0%, 100% { opacity: 1; } 50% { opacity: .15; } }
 .robot-pacing { animation: robot-pace 14s linear infinite; }

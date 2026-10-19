@@ -1,5 +1,42 @@
 # Which wAIst local setup
 
+## Browser conveyor update
+
+This branch keeps Jack's home screen and game layout, with an instruction splash
+before sorting. Click **Start sorting at speed 2** to begin. After three consecutive
+misses at speed 2 or 3, the belt pauses for an explanation: lava items have no
+labels, so the robot has fewer examples to learn from. Click **Continue at speed 1**
+to resume with more time. Any bin drop resets the consecutive-miss counter. Saved
+labels and points remain intact; fewer examples do not guarantee lower accuracy.
+The slowdown prompt appears only once per round. Afterward, students can increase
+the speed without another automatic slowdown; misses and their speeds are still
+recorded. Starting a new round enables the prompt again.
+Speed arrows still allow manual adjustment and pausing at 0 after the splash.
+The larger lava pool has persistent embers and a burst of sparks for each miss.
+
+## Robot Detective (Explore)
+
+After training, **3 · Explore** guides students through three investigations:
+robot eyes (pixels and actual filter maps), the decision (reveal bin scores and
+compare before/after training), and the test (try a new drawing or an unfamiliar
+item). Back/Next and the step buttons allow students to revisit each idea.
+The network diagram and demonstration weight sliders remain available as optional
+activities. Extra-help openings use the existing anonymous help-topic recording.
+Predictions and filter maps still come from the trained CNN, and unfamiliar-item
+results explain when none of the robot's three bins is suitable.
+
+Run the web backend and frontend in separate terminals from the repository root:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+```powershell
+npm.cmd run dev
+```
+
+Open http://localhost:5173. The desktop launcher below is a separate earlier demo.
+
 ## Desktop conveyor experiment
 
 The current experiment builds on the Python/Tkinter game in `file_consolidation`,

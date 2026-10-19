@@ -127,7 +127,7 @@ export default function App() {
         onTrain={() => setView('train')} onResort={newGame} busy={busy}
         stageNavigation={<nav className="stage-nav" aria-label="Game stages">{[['sort', '1 · Sort'], ['train', '2 · Train'], ['explore', '3 · Explore']].map(([id, label]) =>
           <button key={id} className={nextStage === id ? 'stage-ready' : undefined} aria-current={view === id ? 'step' : undefined} disabled={id === 'train' ? !complete : id === 'explore' ? game.training.status !== 'done' : false} onClick={() => setView(id)}>{label}</button>)}</nav>} />
-      {complete && <div hidden={view === 'sort'}><LearningLab key={game.id} game={game} setGame={setGame} view={view} saving={recorder.pending} help={openGuide} /></div>}
+      {complete && <div hidden={view === 'sort'}><LearningLab key={game.id} game={game} setGame={setGame} view={view} saving={recorder.pending} track={track} /></div>}
     </>}
     {error && <p className="error" role="alert">{error}</p>}
     {guide && <HelpGuide close={closeGuide} track={track} />}

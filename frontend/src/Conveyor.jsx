@@ -5,9 +5,13 @@ import MemoryTable from './MemoryTable'
 import TVStatic from './TVStatic'
 import RobotSummary from './RobotSummary'
 import BeltSpeedControl from './BeltSpeedControl'
+import ConveyorPrompt from './ConveyorPrompt'
 
 const SPEED_LEVELS = Object.keys(SPEEDS)
 const DELIVERY_STOP_Y = 145
+const MIN_SCENE_HEIGHT = 820
+const MISSES_BEFORE_SLOWDOWN = 3
+const BURN_SECONDS = .85
 
 export default function Conveyor({ game, paused, onResolve, help, onReturnToStart, onTrain, onResort, busy = false, saving, saveError, stageNavigation, active = true, feedback = '', feedbackKind = 'ready', feedbackKey = 'ready' }) {
   const [store] = useState(() => {
@@ -21,11 +25,14 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
   useEffect(() => { callback.current = onResolve }, [onResolve])
   const svg = useRef()
   const keyboardControls = useRef()
-  const [sceneHeight, setSceneHeight] = useState(770)
+  const [sceneHeight, setSceneHeight] = useState(MIN_SCENE_HEIGHT)
   const binOffset = sceneHeight - 770
   const [started, setStarted] = useState(false)
   const [showGuidance, setShowGuidance] = useState(true)
-  const [speedLevel, setSpeedLevel] = useState(0)
+  const [speedLevel, setSpeedLevel] = useState(2)
+  const [prompt, setPrompt] = useState(game.summary.resolved === 30 ? null : 'intro')
+  const consecutiveMisses = useRef(0)
+  const slowdownShown = useRef(false)
   const [pauseSettled, setPauseSettled] = useState(false)
   const [deliveryDone, setDeliveryDone] = useState(false)
   const [selected, setSelected] = useState(null)
@@ -40,16 +47,24 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
   const delivering = complete && !deliveryDone
   const displayedSpeedLevel = delivering ? Math.max(1, speedLevel) : speedLevel
   const speed = SPEED_LEVELS[Math.max(0, displayedSpeedLevel - 1)]
-  const running = active && (delivering || (!complete && speedLevel > 0)) && !paused && !saveError
+  const running = active && (delivering || (!complete && speedLevel > 0)) && !paused && !saveError && !prompt
   const robotAwake = (started || complete) && active
   const feedbackVisible = started && feedbackKind !== 'ready'
   const beltPaused = started && speedLevel === 0 && !complete && active && !paused && !saveError
   const robotIdle = beltPaused && pauseSettled
 
   function changeSpeed(level) {
+    if (prompt) return
     setPauseSettled(false)
     setSpeedLevel(level)
     if (level > 0) setStarted(true)
+  }
+
+  function continueSorting() {
+    setPauseSettled(false)
+    setSpeedLevel(prompt === 'slowdown' ? 1 : 2)
+    setStarted(true)
+    setPrompt(null)
   }
 
   useEffect(() => {
@@ -79,7 +94,7 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
       const bottomPadding = main ? parseFloat(getComputedStyle(main).paddingBottom) : 22
       const border = parseFloat(getComputedStyle(canvas.closest('.game-board')).borderBottomWidth) || 0
       const available = window.innerHeight - (bounds.top + window.scrollY) - keyboardControls.current.getBoundingClientRect().height - bottomPadding - border
-      const height = Math.max(770, available * 1920 / bounds.width)
+      const height = Math.max(MIN_SCENE_HEIGHT, available * 1920 / bounds.width)
       setSceneHeight(current => Math.abs(current - height) > .1 ? height : current)
     }
     resizeScene()
@@ -102,7 +117,17 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
     if (!w.actors.some(item => item.index === actor.index)) return
     w.actors = w.actors.filter(item => item.index !== actor.index)
     if (w.drag?.index === actor.index) w.drag = null
-    if (outcome === 'missed') w.burnt.push({ ...actor, age: 0 })
+    if (outcome === 'missed') {
+      w.burnt = [...w.burnt, { ...actor, age: 0 }]
+      consecutiveMisses.current += 1
+      if (!slowdownShown.current && consecutiveMisses.current >= MISSES_BEFORE_SLOWDOWN && speedLevel > 1 && w.actors.length) {
+        slowdownShown.current = true
+        consecutiveMisses.current = 0
+        w.drag = null
+        setSpeedLevel(1)
+        setPrompt('slowdown')
+      }
+    } else consecutiveMisses.current = 0
     setMemory(records => [...records, { index: actor.index, outcome, chosen_class: chosen }])
     if (outcome === 'sorted') {
       setBinCounts(counts => counts.map((count, bin) => count + (bin === chosen ? 1 : 0)))
@@ -127,7 +152,7 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
       w.actors = [...next.actors, ...next.missed]
       next.missed.forEach(actor => resolveRef.current(actor, 'missed'))
       w.treads = (w.treads + SPEEDS[speed] * seconds) % 30
-      w.burnt = w.burnt.map(item => ({ ...item, age: item.age + seconds })).filter(item => item.age < .5)
+      w.burnt = w.burnt.map(item => ({ ...item, age: item.age + seconds })).filter(item => item.age < BURN_SECONDS)
       if (complete) w.deliveryY = Math.min(DELIVERY_STOP_Y, w.deliveryY + SPEEDS[speed] * seconds)
       store.publish()
       if (complete && w.deliveryY === DELIVERY_STOP_Y) { setDeliveryDone(true); setSpeedLevel(0); return }
@@ -136,6 +161,23 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
   }, [running, speed, store, complete])
+
+  // Let the last splash finish even when a learning prompt has paused the belt.
+  const burning = w.burnt.length > 0
+  useEffect(() => {
+    if (running || !burning || !active || paused || saveError) return
+    let frame, previous
+    function tick(now) {
+      const seconds = previous === undefined ? 0 : Math.min((now - previous) / 1000, .1)
+      previous = now
+      const world = store.read()
+      world.burnt = world.burnt.map(item => ({ ...item, age: item.age + seconds })).filter(item => item.age < BURN_SECONDS)
+      store.publish()
+      if (world.burnt.length) frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [running, burning, active, paused, saveError, store])
 
   useEffect(() => {
     const pauseHidden = () => { if (document.hidden) setSpeedLevel(0) }
@@ -185,7 +227,7 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
   const selectedItem = w.actors.find(item => item.index === selected)
   const empty = !w.actors.length
   return <section className={`game-board pixel-panel ${running ? 'moving' : ''} ${robotAwake ? 'robot-awake' : ''} ${robotIdle ? 'robot-idle' : ''}`} aria-label="Conveyor sorting game">
-    <div className="board-controls">{stageNavigation}<div className="button-row">
+    <div inert={prompt ? true : undefined}><div className="board-controls">{stageNavigation}<div className="button-row">
       <button className="secondary" onClick={help} title="The belt pauses while you explore labels, filters, weights and fair testing.">? Learning tips</button>
       <button onClick={onReturnToStart} disabled={saving > 0} title={saving > 0 ? 'Wait for progress to finish saving before returning to start.' : undefined}>Return to start</button>
     </div></div>
@@ -195,7 +237,7 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
       <defs><pattern id="floor" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#142a1d" /></pattern>
         <clipPath id="belt-clip"><rect x="530" y="0" width="220" height="470" /></clipPath></defs>
       <rect x="-320" width="1920" height={sceneHeight} fill="#080e0a" /><rect x="-320" width="1920" height={sceneHeight} fill="url(#floor)" />
-      <BeltSpeedControl value={displayedSpeedLevel} onChange={changeSpeed} disabled={empty || !!saveError} />
+      <BeltSpeedControl value={displayedSpeedLevel} onChange={changeSpeed} disabled={!!prompt || empty || !!saveError} />
       <g className="sorting-tv memory-tv" transform="translate(0 21)">
         <g fill="rgb(95, 87, 79)" stroke="rgb(194, 195, 199)" strokeWidth="4">
           <rect x="-320" y="125" width="80" height="14" />
@@ -241,9 +283,15 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
       </g>}
       <rect x="510" y="470" width="260" height="20" fill="#000" />
       {Array.from({ length: 11 }, (_, i) => <path key={i} d={`M${510 + i * 24} 490 l12 -20 h12 l-12 20Z`} fill="#ffec27" />)}
-      <rect x="510" y="490" width="260" height="52" fill="#5f574f" stroke="#c2c3c7" strokeWidth="4" />
-      {Array.from({ length: 36 }, (_, i) => <rect className="lava-tile" key={i} x={520 + i % 12 * 20} y={494 + Math.floor(i / 12) * 12}
-        width="20" height="12" style={{ animationDelay: `${-(i % 5) * .2}s`, animationPlayState: active ? 'running' : 'paused' }} />)}
+      <g className="lava-pool" role="img" aria-label="Lava pool: missed items receive no training label">
+        <rect className="lava-glow" x="460" y="486" width="360" height="100" fill="#ff6b00" opacity=".2" />
+        <rect x="470" y="490" width="340" height="90" fill="#5f574f" stroke="#c2c3c7" strokeWidth="5" />
+        {Array.from({ length: 80 }, (_, i) => <rect className="lava-tile" key={i} x={480 + i % 16 * 20} y={500 + Math.floor(i / 16) * 14}
+          width="20" height="14" style={{ animationDelay: `${-(i % 5) * .2}s`, animationPlayState: active ? 'running' : 'paused' }} />)}
+        <text x="640" y="595" textAnchor="middle" fill="#ffcc80" fontSize="12">LAVA · LOST PRACTICE EXAMPLES</text>
+        {Array.from({ length: 7 }, (_, i) => <rect className="lava-ember" key={i} x={495 + i * 45} y={502 + i % 3 * 12} width="6" height="6" fill={i % 2 ? '#ffa300' : '#ffec27'}
+          style={{ animationDelay: `${-i * .23}s`, animationPlayState: active ? 'running' : 'paused' }} />)}
+      </g>
       {guidanceVisible && <g>
       <g className="lava-arrow" fill="none" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true">
         <path d="M830 447L740 506M746 490L740 506L757 507" stroke="#fff" strokeWidth="16" />
@@ -277,7 +325,7 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
       <text x="260" y="267" textAnchor="middle" fill="#00e436" fontSize="21">RE-CYCLER, NEW HIRE</text>
       <text x="260" y="300" textAnchor="middle" fill="#a3b9aa" fontSize="17"><tspan x="260">I brought in 30 items, </tspan><tspan x="260" dy="24">could you show me where </tspan><tspan x="260" dy="24">to put them?</tspan></text>
       </g>}
-      {!running && !empty && <text className="belt-start-hint" x="848" y="185" textAnchor="middle" fill="#69f58e" fontSize="16">{paused ? 'LEARNING BREAK' : 'Set BELT SPEED to 1 to start'}</text>}
+      {!running && !empty && <text className="belt-start-hint" x="848" y="185" textAnchor="middle" fill="#69f58e" fontSize="16">{paused || prompt ? 'LEARNING BREAK' : 'Set BELT SPEED above 0 to resume'}</text>}
       </g>}
       {[280, 640, 1000].map((cx, i) => <g key={cx} className="sorting-bin" transform={`translate(0 ${binOffset})`} role="button" tabIndex={0} aria-label={`Sort selected item into ${BINS[i]}`}
         onClick={() => chooseBin(i)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); chooseBin(i) } }}>
@@ -296,13 +344,15 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
           <image href={actor.image} width="128" height="128" draggable="false" />
           <text x="64" y="148" fill="#fff1e8" textAnchor="middle" fontSize="18">{actor.name}</text></g>
       })}
-      {w.burnt.map(actor => { const progress = actor.age / .5, size = 128 * (1 - progress)
-        return <g key={actor.index} aria-label="Missed item destroyed in lava"><image href={actor.image} x={640 - size / 2} y={500 - size / 2 + progress * 12} width={size} height={size} />
-          {Array.from({ length: 8 }, (_, i) => <rect key={i} x={640 + (i - 3.5) * (progress * 18 + 4)} y={510 - progress * 60 + i % 3 * 8}
-            width="7" height="7" opacity={1 - progress} fill={i % 2 ? '#ffa300' : '#ffec27'} />)}</g> })}
+      {w.burnt.map(actor => { const progress = actor.age / BURN_SECONDS, size = 128 * (1 - progress)
+        return <g key={actor.index} aria-label="Missed item destroyed in lava"><image href={actor.image} x={640 - size / 2} y={520 - size / 2 + progress * 16} width={size} height={size} />
+          {Array.from({ length: 14 }, (_, i) => <rect className="lava-spark" key={i} x={640 + (i - 6.5) * (progress * 20 + 2)} y={535 - progress * 110 + i % 3 * 10 + progress * progress * 45}
+            width={i % 3 ? '8' : '11'} height={i % 3 ? '8' : '11'} opacity={1 - progress} fill={i % 2 ? '#ffa300' : '#ffec27'} />)}</g> })}
     </svg>
     <div ref={keyboardControls} className="keyboard-controls"><span>{selectedItem ? `Selected: ${selectedItem.name}` : 'Keyboard: Tab to an item, press Enter, then choose its bin.'}</span>
       <div className="button-row">{BINS.map((bin, i) => <button key={bin} disabled={!running || !selectedItem} onClick={() => chooseBin(i)}>{bin}</button>)}</div></div>
     </div>
+    </div>
+    {active && prompt && <ConveyorPrompt slowdown={prompt === 'slowdown'} onContinue={continueSorting} />}
   </section>
 }
