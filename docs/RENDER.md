@@ -1,15 +1,15 @@
 # Host Which wAIste on Render
 
-Use the combined branch **`integration/temp-data-collection`**, not `temp` or
-`main`. `temp` contains the desktop analytics work; the integration branch also
-connects that data collection to the browser game.
+Use **`which-wAIste-retro`** for the current classroom version. It includes the
+browser game, student data collection, and the latest training and layout updates.
+Keep the existing PostgreSQL database connected when updating the web service.
 
 ## First deployment
 
-1. Push the integration branch to the team's GitHub repository.
+1. Push `which-wAIste-retro` to the team's GitHub repository.
 2. Sign in to [Render](https://dashboard.render.com/), choose **New → Blueprint**,
    and connect `Thenugofthenug/Which-WAIste`.
-3. Select **`integration/temp-data-collection`** and the root `render.yaml`.
+3. Select **`which-wAIste-retro`** and the root `render.yaml`.
 4. Review the resources: one **free Docker web service** (`which-waiste-lava`)
    and one **free PostgreSQL database** (`which-waiste-data`), both in Oregon.
 5. Deploy the Blueprint. The Dockerfile builds React, installs CPU-only PyTorch,
@@ -40,6 +40,7 @@ The browser writes to these tables:
 | `game_players` | Links each named round to its student ID; one student can play multiple rounds |
 | `sort_actions` | Item, expected/chosen bins, correct/wrong/missed, speed, response time |
 | `training_runs` | Each training run, selected learning rate/epochs, history and results |
+| `training_settings` | Practice mode and augmented views per training item for each new run |
 | `lr_adjustments` | Learning-rate choices after the slider rests for 700 ms |
 | `try_clicks` | Familiar/unfamiliar tests, model run, prediction, confidence, destination and correctness |
 | `help_events` | Help topics opened, including Robot Detective explanations |
@@ -108,6 +109,30 @@ not remove an earlier `players.csv`. This report is a local command; there is no
 public data-export endpoint. Generated data exports remain under ignored `.data`.
 
 ## Free-trial limits
+
+### Faster classroom practice
+
+New training requests default to **Classroom** mode: four augmented practice views
+per labeled training item each epoch, instead of the original eight in **Full**
+mode. It still trains the real CNN from scratch using every student-labeled item
+in the same train/validation/test split. The 64-pixel input, model architecture,
+validation/test views, filters and saved-model predictions are unchanged. Lava
+items remain unlabeled and excluded. Desktop training still defaults to eight views.
+
+This reduces practice work, so accuracy may be lower, especially after only three
+epochs. Students can select Full mode for more practice; use the same mode when
+comparing learning rates or epoch counts. Local fixed-seed tests found four views
+more useful for learning than two. Hosting speed still depends on Render's CPU and
+other requests; this is not a guarantee of a particular Render runtime.
+
+`POST /api/sessions/{id}/train` accepts `training_mode: "classroom" | "full"`.
+Status, restored sessions and completed results report `training_mode` and
+`augmentations_per_item`. The additive `training_settings` table records each
+choice before training starts, including interrupted runs. Existing runs without
+settings are reported as Full/eight; existing models and analytics are retained.
+CSV exports include both the settings table and these fields in `training_runs.csv`.
+
+### Hosting limits
 
 [Render's free-plan documentation](https://render.com/docs/free) says free
 PostgreSQL expires **30 days after creation** and has no managed backups. Export

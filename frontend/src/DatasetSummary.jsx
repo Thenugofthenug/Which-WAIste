@@ -10,13 +10,13 @@ export default function DatasetSummary({ game }) {
     <dl>
       <div>
       <dt>TRAIN: {split.train}</dt>
-      <dd>The &quot;homework&quot; the AI studies to learn your sorting rules.</dd>
+      <dd>The &quot;homework&quot; that teaches your sorting rules.</dd>
       </div><div>
       <dt>VALIDATE: {split.validation}</dt>
-      <dd>A &quot;practice quiz&quot; to check if the AI is finding patterns or just memorizing.</dd>
+      <dd>A &quot;practice quiz&quot; to help choose the best round.</dd>
       </div><div>
       <dt>TEST: {split.test}</dt>
-      <dd>The &quot;final exam&quot; using hidden items to grade the AI at the very end.</dd>
+      <dd>The &quot;final exam&quot; with items kept out of practice.</dd>
       </div>
     </dl>
   </aside>

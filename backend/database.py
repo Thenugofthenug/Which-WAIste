@@ -62,6 +62,14 @@ class TrainingRun(Base):
     results: Mapped[dict | None] = mapped_column(JSON)
 
 
+class TrainingSettings(Base):
+    # Additive table: old training_runs rows and their saved models stay untouched.
+    __tablename__ = 'training_settings'
+    training_run_id: Mapped[str] = mapped_column(ForeignKey('training_runs.id', ondelete='CASCADE'), primary_key=True)
+    training_mode: Mapped[str] = mapped_column(String(12))
+    augmentations_per_item: Mapped[int] = mapped_column(Integer)
+
+
 class SortAction(Base):
     __tablename__ = 'sort_actions'
     session_id: Mapped[str] = mapped_column(ForeignKey('game_sessions.id', ondelete='CASCADE'), primary_key=True)

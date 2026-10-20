@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from config import BATCH_SIZE, CATEGORIES, CHANNELS, EPOCHS, SHOW_PER_BLOCK
+from config import AUG_PER_ITEM, BATCH_SIZE, CATEGORIES, CHANNELS, EPOCHS, SHOW_PER_BLOCK
 from data import make_train_epoch, to_tensor
 
 
@@ -99,14 +99,16 @@ def probe_model(model, img):
 # ----------------------------------------------------------------------------
 # Training loop (GUI-agnostic)
 # ----------------------------------------------------------------------------
-def train_model(train_imgs, train_labels, val_set, test_set, get_lr, get_probe, stop_event, emit, epochs=None):
+def train_model(train_imgs, train_labels, val_set, test_set, get_lr, get_probe, stop_event, emit, epochs=None,
+                augmentations_per_item=AUG_PER_ITEM):
     """Train a fresh TrashCNN for EPOCHS epochs.
 
     get_lr()      -> current learning rate; read every batch, so a live slider works.
     get_probe()   -> (item index, image) to visualize after each epoch.
     stop_event    -> threading.Event; set it to stop early.
     emit(kind, data) receives progress: "probe", "log", "epoch" and finally "done".
-    The best epoch (lowest validation loss) is restored before testing."""
+    The best epoch (lowest validation loss) is restored before testing.
+    augmentations_per_item controls practice views; desktop keeps its usual eight."""
     Xv, yv, _ = val_set
     Xt, yt, test_owner = test_set
     rng = random.Random()
@@ -133,7 +135,7 @@ def train_model(train_imgs, train_labels, val_set, test_set, get_lr, get_probe, 
     emit("probe", probe_payload())
 
     for epoch in range(1, (epochs if epochs is not None else EPOCHS) + 1):
-        X, y = make_train_epoch(train_imgs, train_labels, rng)
+        X, y = make_train_epoch(train_imgs, train_labels, rng, augmentations_per_item)
         perm = torch.randperm(len(X))
         prev_w = block_weights(model)
         model.train()

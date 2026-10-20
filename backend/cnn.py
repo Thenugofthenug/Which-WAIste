@@ -12,7 +12,7 @@ from PIL import Image
 
 # The desktop files intentionally use local imports. Keep the desktop launcher working.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'file_consolidation'))
-from config import CATEGORIES  # noqa: E402
+from config import AUG_PER_ITEM, CATEGORIES  # noqa: E402
 from data import build_eval_set, stratified_split, to_tensor  # noqa: E402
 from items import ITEM_TYPES, NOVEL_TYPES, make_game_items  # noqa: E402
 from model import TrashCNN, probe_model, train_model  # noqa: E402
@@ -21,6 +21,7 @@ from sprites import cutout, render_item, sprite  # noqa: E402
 torch.set_num_threads(2)
 
 CURRENT_VERSION = 'lava-web-v4-guided-lab'
+TRAINING_MODES = {'classroom': 4, 'full': AUG_PER_ITEM}
 
 
 def uses_pixel_art(version):
@@ -74,7 +75,8 @@ def inspect(model, image):
             'normalized': [round((v / 255 - .5) / .5, 3) for v in rgb], 'layers': layers}
 
 
-def run_training(seed, actions, epochs, rate, emit, pixel_art=True):
+def run_training(seed, actions, epochs, rate, emit, pixel_art=True, training_mode='classroom'):
+    augmentations_per_item = TRAINING_MODES[training_mode]
     items = game_items(seed, pixel_art=pixel_art)
     labeled = []
     for action in actions:
@@ -99,7 +101,7 @@ def run_training(seed, actions, epochs, rate, emit, pixel_art=True):
     import threading
     train_model([labeled[i].image for i in train], [labeled[i].label for i in train],
                 val_set, test_set, lambda: rate, lambda: (val[0], labeled[val[0]].image),
-                threading.Event(), receive, epochs=epochs)
+                threading.Event(), receive, epochs=epochs, augmentations_per_item=augmentations_per_item)
     model = result.pop('model')
     predictions = []
     for i in test:
@@ -112,7 +114,8 @@ def run_training(seed, actions, epochs, rate, emit, pixel_art=True):
                             'before': before, 'inspection': inspect(model, item.image), 'viz': serializable(viz)})
     weights = io.BytesIO()
     torch.save(model.state_dict(), weights)
-    return {'before_accuracy': result['before_test_acc'], 'test_accuracy': result['test_acc'],
+    return {'training_mode': training_mode, 'augmentations_per_item': augmentations_per_item,
+            'before_accuracy': result['before_test_acc'], 'test_accuracy': result['test_acc'],
             'best_epoch': result['best_epoch'], 'split': {'train': len(train), 'validation': len(val), 'test': len(test)},
             'predictions': predictions}, weights.getvalue()
 

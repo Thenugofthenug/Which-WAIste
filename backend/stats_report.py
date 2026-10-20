@@ -10,7 +10,7 @@ from pathlib import Path
 from sqlalchemy import select
 
 from backend.database import (ActivityEvent, Game, GamePlayer, HelpOpen,
-                              LearningRateAdjustment, Player, SortAction, TrainingRun,
+                              LearningRateAdjustment, Player, SortAction, TrainingRun, TrainingSettings,
                               TryClick, make_database)
 from file_consolidation.config import CATEGORIES
 
@@ -19,7 +19,8 @@ def collect_report(Session, include_names=False):
     """Export linked study IDs by default; names require an explicit opt-in."""
     report = {}
     with Session() as db:
-        models = [Game, GamePlayer, SortAction, HelpOpen, LearningRateAdjustment, TryClick, ActivityEvent]
+        models = [Game, GamePlayer, SortAction, HelpOpen, LearningRateAdjustment, TryClick, ActivityEvent,
+                  TrainingSettings]
         if include_names:
             models.append(Player)
         for model in models:
@@ -28,13 +29,17 @@ def collect_report(Session, include_names=False):
             report[model.__tablename__] = (list(column.name for column in columns),
                                           [dict(row) for row in db.execute(select(*columns)).mappings()])
         fields = ['id', 'session_id', 'status', 'epochs', 'epochs_completed', 'learning_rate',
+                  'training_mode', 'augmentations_per_item',
                   'train_items', 'validation_items', 'test_items', 'before_accuracy',
                   'test_accuracy', 'best_epoch', 'started_at', 'completed_at']
         runs = []
         for run in db.scalars(select(TrainingRun).order_by(TrainingRun.started_at)):
             result = run.results or {}
             split = result.get('split', {})
+            settings = db.get(TrainingSettings, run.id)
             runs.append(dict(id=run.id, session_id=run.session_id, status=run.status, epochs=run.epochs,
+                             training_mode=settings.training_mode if settings else 'full',
+                             augmentations_per_item=settings.augmentations_per_item if settings else 8,
                              epochs_completed=len(run.history), learning_rate=run.learning_rate,
                              train_items=split.get('train'), validation_items=split.get('validation'),
                              test_items=split.get('test'), before_accuracy=result.get('before_accuracy'),

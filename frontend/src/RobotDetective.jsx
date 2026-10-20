@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { api } from './api'
 import { BINS, COLORS } from './gameEngine'
 import HomeRobot from './HomeRobot'
+import DefinitionBubble from './DefinitionBubble'
 import './RobotDetective.css'
 
 const percent = value => `${(value * 100).toFixed(1)}%`
@@ -12,7 +13,8 @@ const STEPS = [
   { name: 'The test', title: 'Test the robot', action: 'Try a new drawing, then an unfamiliar item. Does the chosen bin make sense?', takeaway: 'A high score can still be wrong, especially when none of the three bins fits.' },
 ]
 
-function ExtraHelp({ title, topic, track, children }) {
+function ExtraHelp({ title, topic, track, disclosure = false, children }) {
+  if (!disclosure) return <DefinitionBubble className="detective-definition" title={title} topic={topic} track={track}>{children}</DefinitionBubble>
   return <details className="detective-help" onToggle={event => {
     if (event.target === event.currentTarget && event.currentTarget.open) track?.(topic)
   }}>
@@ -169,7 +171,7 @@ function Decision({ item, track }) {
       <button aria-pressed={compare} onClick={() => setCompare(value => !value)}>{compare ? 'Show after only' : 'Compare before & after'}</button>
       {compare && <p className="muted">Same test item and views in both checks. Training can change scores without changing the winning bin.</p>}
     </>}
-    <ExtraHelp title="Open the real CNN diagram" topic="weights" track={track}><Network viz={item.viz} /><p>Cyan solid lines (+) summarize positive weights; coral dashed lines (−) summarize negative weights. Training adjusts many weights, changing how responses contribute to the next layer.</p></ExtraHelp>
+    <ExtraHelp title="Open the real CNN diagram" topic="weights" track={track} disclosure><Network viz={item.viz} /><p>Cyan solid lines (+) summarize positive weights; coral dashed lines (−) summarize negative weights. Training adjusts many weights, changing how responses contribute to the next layer.</p></ExtraHelp>
     <ExtraHelp title="How are these scores calculated?" topic="confidence" track={track}><p>Softmax turns the final three values into scores adding up to 100%. The highest score chooses a bin, but it is not a promise that the answer is right. The before/after scores average the same image and augmented views. The diagram shows the original image.</p></ExtraHelp>
   </>
 }
@@ -210,7 +212,7 @@ export default function RobotDetective({ game, track, onBack, onActivity }) {
             {busy && <p role="status">The robot is checking a new image…</p>}
             {error && <p className="error" role="alert">{error} Try either test button again.</p>}
             {!fresh && !busy && !error && <div className="detective-reveal"><p>Will it recognize another drawing?</p><p className="muted">Then see what happens when an item needs a destination outside its three bins.</p></div>}
-            {fresh && <div className="detective-test-result" aria-live="polite"><div className="detective-pick">Robot's pick: <strong>{winner(fresh.probabilities)}</strong><span>{percent(Math.max(...fresh.probabilities))} score</span></div><Scores values={fresh.probabilities} /><p>Common destination: <strong>{fresh.destination}</strong></p><p className={fresh.has_valid_bin ? 'education-note' : 'detective-caution'}>{fresh.has_valid_bin ? 'Compare the chosen bin with the common destination. Does the robot’s decision fit this new drawing?' : 'None of the robot’s three bins is suitable! It still has to pick one. A high score cannot create a missing category.'}</p><ExtraHelp title="Look inside this new prediction" topic="filters" track={track}><Network viz={fresh.viz} /></ExtraHelp></div>}
+            {fresh && <div className="detective-test-result" aria-live="polite"><div className="detective-pick">Robot's pick: <strong>{winner(fresh.probabilities)}</strong><span>{percent(Math.max(...fresh.probabilities))} score</span></div><Scores values={fresh.probabilities} /><p>Common destination: <strong>{fresh.destination}</strong></p><p className={fresh.has_valid_bin ? 'education-note' : 'detective-caution'}>{fresh.has_valid_bin ? 'Compare the chosen bin with the common destination. Does the robot’s decision fit this new drawing?' : 'None of the robot’s three bins is suitable! It still has to pick one. A high score cannot create a missing category.'}</p><ExtraHelp title="Look inside this new prediction" topic="filters" track={track} disclosure><Network viz={fresh.viz} /></ExtraHelp></div>}
             <ExtraHelp title="Tell me more about new items" topic="new-items" track={track}><p>These drawings were not in your training dataset. A familiar type tests whether the robot can use its learned patterns on a new drawing. An unfamiliar type can reveal limits of its three categories. It has no “I don’t know” option.</p></ExtraHelp>
           </div>
         </article>
@@ -223,7 +225,7 @@ export default function RobotDetective({ game, track, onBack, onActivity }) {
       </div>
       <footer className="detective-navigation"><button disabled={step === 0} onClick={() => goTo(step - 1)}>← Back</button><span>You can revisit every step.</span>{step < 2 ? <button className="green" onClick={() => goTo(step + 1)}>{step === 0 ? 'Next: follow the decision →' : 'Next: test the robot →'}</button> : <button className="green" disabled={finished} onClick={() => setFinished(true)}>{finished ? 'Case closed ✓' : 'Close the case'}</button>}</footer>
       {finished && <section className="detective-case-notes" role="status"><h3>Case closed. What did we discover?</h3><p>Your labels supplied examples. Training adjusted weights to learn patterns. Those patterns produced bin scores—but even a confident robot can make a mistake.</p><button onClick={() => goTo(0)}>Investigate again</button></section>}
-      <ExtraHelp title="Optional lab: experiment with weights" topic="weights" track={track}><WeightExperiment track={track} onActivity={onActivity} navigationKey={step} /></ExtraHelp>
+      <ExtraHelp title="Optional lab: experiment with weights" topic="weights" track={track} disclosure><WeightExperiment track={track} onActivity={onActivity} navigationKey={step} /></ExtraHelp>
     </>}
     <div className="detective-stage-back"><button onClick={onBack}>← Back: training</button></div>
   </section>

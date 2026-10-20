@@ -26,9 +26,9 @@ export default function ConveyorPrompt({ slowdown, onContinue }) {
       <p>We’ve lowered the belt to <strong>speed 1</strong> to give you more time. Your score and saved labels stay with you.</p>
       <p className="muted">Fewer examples can make learning harder, but misses don’t guarantee lower accuracy. Let’s save the next ones!</p>
     </> : <>
-      <ol><li><strong>Grab an item</strong> from the moving belt.</li><li><strong>Drag it into Recycling, Compost or Landfill</strong> before it reaches the lava.</li><li><strong>Your bin choice becomes its label.</strong> The robot learns from your choices—even incorrect ones.</li></ol>
+      <ol><li><strong>Watch the next item</strong> on the moving belt.</li><li><strong>Press 1, 2 or 3 to choose its bin</strong> before it reaches the lava. You can also drag it.</li><li><strong>Your bin choice becomes its label.</strong> The robot learns from your choices—even incorrect ones.</li></ol>
       <p>Correct sorts earn <strong>10 points</strong>. Items lost to lava get no points or label. We’ll start at <strong>speed 2</strong> and offer more time if you miss three in a row.</p>
-      <p className="muted">Quick keys: <strong>1 Recycling · 2 Compost · 3 Landfill</strong> sorts the next item. Tab + Enter selects a different item. Pause at speed 0 or open Learning tips anytime.</p>
+      <p className="muted">Quick keys: <strong>1 Recycling · 2 Compost · 3 Landfill</strong>. Use <strong>↑ / ↓ to change belt speed</strong>; speed 0 pauses. Open Learning tips anytime.</p>
     </>}</div>
     <button className="green" onClick={onContinue}>{slowdown ? 'Continue at speed 1' : 'Start sorting at speed 2'}</button>
   </section></div>

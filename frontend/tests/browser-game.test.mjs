@@ -824,10 +824,43 @@ test('Robot Detective tests new images through the API, recovers from errors, an
   assert.equal(container.querySelector('.detective-task [role="status"]').textContent, 'Step 1 of 3')
 })
 
+test('definition bubbles save each opening through the session help API and closing adds no event', async () => {
+  const events = [], completed = detectiveGame()
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/sessions') return { ok: true, json: async () => structuredClone(completed) }
+    assert.equal(url, `/api/sessions/${game.id}/help`)
+    events.push(JSON.parse(init.body))
+    return { ok: true, json: async () => ({ saved: true }) }
+  }
+  await mount(App)
+  await click(button('START'))
+  await click(button('2 · Train'))
+  const trigger = container.querySelector('[aria-label="What do accuracy and loss mean?"]')
+  await click(trigger)
+  assert.equal(document.querySelectorAll('.definition-popup').length, 1)
+  assert.deepEqual(events.map(event => event.topic), ['accuracy'])
+  await click(document.querySelector('.definition-close'))
+  assert.equal(document.querySelector('.definition-popup'), null)
+  assert.equal(events.length, 1)
+  await click(trigger)
+  assert.deepEqual(events.map(event => event.topic), ['accuracy', 'accuracy'])
+  assert.equal(new Set(events.map(event => event.event_id)).size, 2, 'Reopening is a new interaction; retry IDs stay separate')
+  await React.act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+  assert.equal(document.querySelector('.definition-popup'), null)
+  assert.equal(events.length, 2)
+})
+
 test('optional help records topic openings and the demonstration sliders do not change real CNN scores', async () => {
   const topics = [], completed = detectiveGame()
   await mount(RobotDetective, { game: completed, track: topic => topics.push(topic) })
   const openHelp = async title => {
+    const definition = [...container.querySelectorAll('.definition-trigger')].find(trigger => trigger.getAttribute('aria-label') === title)
+    if (definition) {
+      await click(definition)
+      const popup = document.querySelector('.definition-popup')
+      assert.equal(popup.getAttribute('role'), 'dialog')
+      return popup
+    }
     const details = [...container.querySelectorAll('details')].find(details => details.querySelector('summary').textContent === title)
     await React.act(async () => { details.open = true; await new Promise(resolve => setTimeout(resolve, 0)) })
     return details
@@ -901,7 +934,7 @@ test('guided training starts with three rounds and unlocks the next step only af
   await click(next())
   assert.equal(nextClicks, 0)
   await click(button('Train your robot'))
-  assert.deepEqual(requests, [{ url: `/api/sessions/${game.id}/train`, body: { epochs: 3, learning_rate: .001 } }])
+  assert.deepEqual(requests, [{ url: `/api/sessions/${game.id}/train`, body: { epochs: 3, learning_rate: .001, training_mode: 'classroom' } }])
 
   const running = { ...game, training: { ...game.training, status: 'running', epochs: 3 } }
   await React.act(async () => root.render(React.createElement(LearningLab, { ...props, game: running })))

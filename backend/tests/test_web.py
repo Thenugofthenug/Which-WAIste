@@ -13,7 +13,8 @@ from PIL import Image
 from sqlalchemy import create_engine, func, select, text
 
 from backend import cnn
-from backend.database import Game, HelpOpen, LearningRateAdjustment, SortAction, TrainingRun, TryClick
+from backend.database import (Game, HelpOpen, LearningRateAdjustment, SortAction, TrainingRun,
+                              TrainingSettings, TryClick)
 from backend.main import create_app
 from backend.stats_report import collect_report, export_csv
 
@@ -103,7 +104,7 @@ class WebTests(unittest.TestCase):
                 with patch('backend.cnn.run_training', return_value=({'predictions': []}, b'saved model')) as train:
                     self.assertEqual(self.client.post(path + '/train', json={'epochs': 3}).status_code, 202)
                     self.assertEqual(self.client.get(path + '/training').json()['status'], 'done')
-                    self.assertEqual(train.call_args.kwargs, {'pixel_art': pixel_art})
+                    self.assertEqual(train.call_args.kwargs, {'pixel_art': pixel_art, 'training_mode': 'classroom'})
                     self.assertEqual(train.call_args.args[0], seed)
                 with patch('backend.cnn.try_item', return_value=prediction) as try_item:
                     self.assertEqual(self.client.post(path + '/try-item?novel=true', json={}).status_code, 200)
@@ -164,6 +165,9 @@ class WebTests(unittest.TestCase):
         result = self.client.get(self.path).json()
         self.assertEqual(result['summary']['score'], 0)
         self.assertEqual(self.client.post(self.path + '/train', json={}).status_code, 422)
+        self.assertEqual(self.client.post(self.path + '/train', json={'training_mode': 'full'}).status_code, 422)
+        with self.app.state.Session() as db:
+            self.assertEqual(db.scalar(select(func.count()).select_from(TrainingSettings)), 0)
 
     def test_learning_rate_settlements_are_validated_and_safe_to_retry(self):
         event = {'event_id': str(uuid4()), 'exponent': -2.5}
@@ -231,6 +235,7 @@ class WebTests(unittest.TestCase):
         # An invalid request must leave the completed model's displayed data intact.
         self.assertEqual(self.client.post(self.path + '/train', json={'epochs': 4}).status_code, 422)
         untouched = self.client.get(self.path + '/training').json()
+        self.assertEqual((untouched['training_mode'], untouched['augmentations_per_item']), ('full', 8))
         self.assertEqual((untouched['status'], untouched['results'], untouched['probe'], untouched['history']),
                          ('done', old_results, old_probe, old_history))
 
@@ -246,12 +251,40 @@ class WebTests(unittest.TestCase):
             self.assertIsNone(training['probe'])
             self.assertIsNone(training['results'], 'Do not present the prior model as the new run')
             self.assertNotEqual(training['run_id'], old_run_id)
+            self.assertEqual((training['training_mode'], training['augmentations_per_item']), ('classroom', 4))
 
         with self.app.state.Session() as db:
             completed = db.get(TrainingRun, old_run_id)
             self.assertEqual((completed.status, completed.history, completed.results),
                              ('done', old_history, old_results))
             self.assertEqual(db.scalar(select(func.count()).select_from(TrainingRun)), 2)
+
+        # Metadata is durable before training finishes; a server restart marks the run interrupted.
+        with TestClient(create_app(self.url)) as restarted:
+            restored = restarted.get(self.path).json()['training']
+            self.assertEqual((restored['status'], restored['training_mode'], restored['augmentations_per_item']),
+                             ('interrupted', 'classroom', 4))
+        report = collect_report(self.app.state.Session)
+        self.assertEqual([(run['training_mode'], run['augmentations_per_item'])
+                          for run in report['training_runs'][1]], [('full', 8), ('classroom', 4)])
+        self.assertEqual(len(report['training_settings'][1]), 1)
+
+    def test_training_mode_validation_and_explicit_full_setting(self):
+        self.assertEqual((self.game['training']['training_mode'], self.game['training']['augmentations_per_item']),
+                         ('classroom', 4))
+        for bad in ('quick', 2, None):
+            self.assertEqual(self.client.post(self.path + '/train', json={'training_mode': bad}).status_code, 422)
+        expected = self.expected()
+        for index in range(30):
+            self.send(index, expected[index])
+        with patch('backend.cnn.run_training', return_value=({'predictions': []}, b'saved model')) as train:
+            self.assertEqual(self.client.post(self.path + '/train', json={'training_mode': 'full'}).status_code, 202)
+        self.assertEqual(train.call_args.kwargs['training_mode'], 'full')
+        status = self.client.get(self.path + '/training').json()
+        self.assertEqual((status['training_mode'], status['augmentations_per_item']), ('full', 8))
+        with self.app.state.Session() as db:
+            setting = db.get(TrainingSettings, status['run_id'])
+            self.assertEqual((setting.training_mode, setting.augmentations_per_item), ('full', 8))
 
     def test_partial_dataset_real_training_and_saved_model_work_after_restart(self):
         expected = self.expected()
@@ -263,6 +296,7 @@ class WebTests(unittest.TestCase):
         self.assertEqual(training['status'], 'done', training)
         self.assertEqual(len(training['history']), 3)
         results = training['results']
+        self.assertEqual((results['training_mode'], results['augmentations_per_item']), ('classroom', 4))
         self.assertEqual(sum(results['split'].values()), 18)
         self.assertTrue(0 <= results['before_accuracy'] <= 1)
         self.assertTrue(0 <= results['test_accuracy'] <= 1)
@@ -277,7 +311,14 @@ class WebTests(unittest.TestCase):
             click = db.scalar(select(TryClick))
             self.assertEqual(click.training_run_id, db.get(Game, self.game['id']).training_run_id)
         # A second run gets a separate research record instead of overwriting the first.
-        self.assertEqual(self.client.post(self.path + '/train', json={'epochs': 3}).status_code, 202)
+        self.assertEqual(self.client.post(self.path + '/train', json={'epochs': 3, 'training_mode': 'full'}).status_code, 202)
+        full = self.client.get(self.path + '/training').json()
+        self.assertEqual(full['results']['split'], results['split'])
+        self.assertEqual((full['results']['training_mode'], full['results']['augmentations_per_item']), ('full', 8))
+        with TestClient(create_app(self.url)) as restarted:
+            prediction = restarted.post(self.path + '/try-item', json={})
+            self.assertEqual(prediction.status_code, 200, prediction.text)
+            self.assertAlmostEqual(sum(prediction.json()['probabilities']), 1, places=5)
         with self.app.state.Session() as db:
             runs = list(db.scalars(select(TrainingRun)))
             self.assertEqual(len(runs), 2)

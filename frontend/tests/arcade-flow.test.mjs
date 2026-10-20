@@ -41,8 +41,10 @@ async function click(element) {
   assert.ok(element, 'Click target must exist')
   await React.act(async () => element.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
 }
-async function key(key, target = document.body) {
-  await React.act(async () => target.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })))
+async function key(key, target = document.body, options = {}) {
+  const event = new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options })
+  await React.act(async () => target.dispatchEvent(event))
+  return event
 }
 async function drive(count) {
   for (let index = 0; index < count && frames.size; index++) await React.act(async () => {
@@ -152,8 +154,6 @@ test('sorting shortcuts leave focused controls alone and cannot act while the mi
     await key('1', control)
     assert.equal(actions.length, 0, `Number keys in ${control.tagName.toLowerCase()} must keep their normal meaning`)
   }
-  await key('1', container.querySelector('[aria-label="Increase belt speed"]'))
-  assert.equal(actions.length, 0, 'A focused speed arrow must not also sort an item')
   controls.forEach(control => control.remove())
   const unrelatedPanel = document.createElement('div')
   unrelatedPanel.tabIndex = 0
@@ -174,4 +174,79 @@ test('sorting shortcuts leave focused controls alone and cannot act while the mi
   await render(Conveyor, props)
   await key('1')
   assert.deepEqual(actions.map(([item, outcome, bin]) => [item.index, outcome, bin]), [[0, 'sorted', 0]])
+})
+
+test('up/down keys change speed within 0–3, resume from pause, and preserve sorting speed records', async () => {
+  const actions = []
+  await mount(Conveyor, { game, paused: false, saving: 0, onResolve: (...args) => actions.push(args) })
+  await key('ArrowUp')
+  assert.equal(speed(), 'Belt speed 2 of 3', 'Keys cannot bypass the start instructions')
+  await click(button('Start sorting at speed 2'))
+  assert.equal((await key('ArrowUp')).defaultPrevented, true, 'Game arrows do not scroll the page')
+  assert.equal(speed(), 'Belt speed 3 of 3')
+  await key('ArrowUp')
+  assert.equal(speed(), 'Belt speed 3 of 3')
+  for (let level = 2; level >= 0; level--) {
+    await key('ArrowDown')
+    assert.equal(speed(), `Belt speed ${level} of 3`)
+  }
+  await key('ArrowDown')
+  assert.equal(speed(), 'Belt speed 0 of 3')
+  assert.equal(frames.size, 0)
+  await key('1')
+  assert.equal(actions.length, 0, 'Paused items are not sorted by accident')
+  await key('ArrowUp')
+  assert.equal(speed(), 'Belt speed 1 of 3')
+  assert.equal(frames.size, 1)
+  await key('3')
+  assert.deepEqual(actions.map(([item, outcome, bin, recordedSpeed]) => [item.index, outcome, bin, recordedSpeed]), [[0, 'sorted', 2, 'SLOW']])
+})
+
+test('number keys work after clicking scene controls and moving items do not clutter the tab sequence', async () => {
+  const actions = []
+  await mount(Conveyor, { game, paused: false, saving: 0, onResolve: (...args) => actions.push(args) })
+  await click(button('Start sorting at speed 2'))
+  const up = container.querySelector('[aria-label="Increase belt speed"]')
+  up.focus()
+  await key('1', up)
+  assert.deepEqual(actions.map(([item, , bin]) => [item.index, bin]), [[0, 0]])
+  await drive(18)
+  const compost = button('Compost')
+  compost.focus()
+  await key('2', compost)
+  assert.deepEqual(actions.map(([item, , bin]) => [item.index, bin]), [[0, 0], [1, 1]])
+  assert.ok([...container.querySelectorAll('.sorting-bin, [aria-label^="Select Item"]')].every(element => element.getAttribute('tabindex') === '-1'))
+  await drive(18)
+  await click(button('Landfill'))
+  assert.equal(actions.at(-1)[0].index, 2, 'The visible bin buttons also sort the next item')
+  assert.equal(actions.at(-1)[2], 2)
+})
+
+test('speed keys leave forms and dialogs alone and cannot change hidden, paused, or disconnected games', async () => {
+  const props = { game, paused: false, saving: 0, onResolve: () => {} }
+  await mount(Conveyor, props)
+  await click(button('Start sorting at speed 2'))
+  for (const tag of ['input', 'select', 'textarea', 'div']) {
+    const element = document.createElement(tag)
+    if (tag === 'div') element.setAttribute('contenteditable', 'true')
+    container.querySelector('.keyboard-controls').append(element)
+    assert.equal((await key('ArrowDown', element)).defaultPrevented, false)
+    assert.equal(speed(), 'Belt speed 2 of 3')
+    element.remove()
+  }
+  const dialog = document.createElement('div')
+  dialog.setAttribute('role', 'dialog')
+  container.querySelector('.keyboard-controls').append(dialog)
+  await key('ArrowUp', dialog)
+  dialog.remove()
+  for (const options of [{ repeat: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }]) await key('ArrowDown', document.body, options)
+  assert.equal(speed(), 'Belt speed 2 of 3')
+  for (const block of [{ paused: true }, { active: false }, { saveError: 'Waiting to reconnect' }]) {
+    await render(Conveyor, { ...props, ...block })
+    await key('ArrowUp')
+    assert.equal(speed(), 'Belt speed 2 of 3')
+  }
+  await render(Conveyor, props)
+  await key('ArrowDown')
+  assert.equal(speed(), 'Belt speed 1 of 3')
 })

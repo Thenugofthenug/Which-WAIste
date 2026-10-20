@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { advanceActors, BINS, binAt, COLORS, createWorld, initialActors, missionReportHeading, SPEEDS } from './gameEngine'
 import BinLogo from './BinLogo'
 import MemoryTable from './MemoryTable'
@@ -53,12 +53,12 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
   const beltPaused = started && speedLevel === 0 && !complete && active && !paused && !saveError
   const robotIdle = beltPaused && pauseSettled
 
-  function changeSpeed(level) {
-    if (prompt) return
+  const changeSpeed = useCallback(level => {
+    if (!active || paused || saveError || prompt || complete || !store.read().actors.length) return
     setPauseSettled(false)
-    setSpeedLevel(level)
+    setSpeedLevel(Math.max(0, Math.min(3, level)))
     if (level > 0) setStarted(true)
-  }
+  }, [active, paused, saveError, prompt, complete, store])
 
   function continueSorting() {
     setPauseSettled(false)
@@ -221,14 +221,23 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
     store.publish()
   }
   function chooseBin(bin) {
-    const actor = store.read().actors.find(item => item.index === selected && item.y >= -64)
+    const visible = store.read().actors.filter(item => item.y >= -64)
+    const actor = visible.find(item => item.index === selected) || visible[0]
     if (running && actor) resolve(actor, 'sorted', bin)
   }
   useEffect(() => {
     function shortcut(event) {
-      if (!running || event.repeat || event.ctrlKey || event.altKey || event.metaKey || !['1', '2', '3'].includes(event.key)) return
-      if (event.target !== document.body && !svg.current?.contains(event.target)) return
-      if (event.target.closest?.('button, input, select, textarea, [contenteditable]:not([contenteditable="false"]), [role="dialog"], .belt-speed-control')) return
+      if (!active || paused || saveError || prompt || complete || event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return
+      if (!['1', '2', '3', 'ArrowUp', 'ArrowDown'].includes(event.key)) return
+      if (event.target !== document.body && !svg.current?.contains(event.target) && !keyboardControls.current?.contains(event.target)) return
+      if (event.target.closest?.('input, select, textarea, [contenteditable]:not([contenteditable="false"]), [role="dialog"]')) return
+      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        if (!store.read().actors.length) return
+        event.preventDefault()
+        changeSpeed(speedLevel + (event.key === 'ArrowUp' ? 1 : -1))
+        return
+      }
+      if (!running) return
       const visible = store.read().actors.filter(item => item.y >= -64)
       const actor = visible.find(item => item.index === selected) || visible[0]
       if (!actor) return
@@ -237,7 +246,7 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
     }
     document.addEventListener('keydown', shortcut)
     return () => document.removeEventListener('keydown', shortcut)
-  }, [running, selected, store])
+  }, [active, paused, saveError, prompt, complete, running, selected, speedLevel, store, changeSpeed])
   const selectedItem = w.actors.find(item => item.index === selected)
   const empty = !w.actors.length
   return <section className={`game-board pixel-panel ${running ? 'moving' : ''} ${robotAwake ? 'robot-awake' : ''} ${robotIdle ? 'robot-idle' : ''}`} aria-label="Conveyor sorting game">
@@ -247,7 +256,7 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
     </div></div>
     <div hidden={!active}>
     <div className="sorting-brief"><div><p className="eyebrow">Stage 01 · Sort it</p><h1>You are the robot’s teacher.</h1><p>Drag each item into a bin. Your choice becomes a label the robot learns from.</p></div><span className="mission-counter" role="status">{game.summary.resolved} / 30 <small>ITEMS</small></span></div>
-    <svg ref={svg} className="conveyor-svg" viewBox={`-320 0 1920 ${sceneHeight}`} style={{ aspectRatio: `1920 / ${sceneHeight}` }} aria-label="Animated conveyor above a pixel lava pit and three sorting bins"
+    <svg ref={svg} tabIndex={-1} className="conveyor-svg" viewBox={`-320 0 1920 ${sceneHeight}`} style={{ aspectRatio: `1920 / ${sceneHeight}` }} aria-label="Animated conveyor above a pixel lava pit and three sorting bins" aria-keyshortcuts="1 2 3 ArrowUp ArrowDown"
       onPointerMove={moveDrag} onPointerUp={release} onPointerCancel={() => { store.read().drag = null; store.publish() }}>
       <defs><pattern id="floor" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#302b4b" /></pattern>
         <clipPath id="belt-clip"><rect x="530" y="0" width="220" height="470" /></clipPath></defs>
@@ -343,7 +352,7 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
       </g>}
       {!running && !empty && <text className="belt-start-hint" x="848" y="185" textAnchor="middle" fill="#75e5f5" fontSize="16">{paused || prompt ? 'LEARNING BREAK' : 'Set BELT SPEED above 0 to resume'}</text>}
       </g>}
-      {[280, 640, 1000].map((cx, i) => <g key={cx} className="sorting-bin" transform={`translate(0 ${binOffset})`} role="button" tabIndex={0} aria-label={`Sort selected item into ${BINS[i]}`}
+      {[280, 640, 1000].map((cx, i) => <g key={cx} className="sorting-bin" transform={`translate(0 ${binOffset})`} role="button" tabIndex={-1} aria-label={`Sort next or selected item into ${BINS[i]}`}
         onClick={() => chooseBin(i)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); chooseBin(i) } }}>
         <rect x={cx - 142} y="556" width="300" height="200" fill="#000" />
         <rect x={cx - 150} y="548" width="300" height="200" fill={COLORS[i]} stroke={binAt(w.drag?.x, w.drag?.y, binOffset) === i ? '#ffec27' : '#fff1d6'} strokeWidth="5" />
@@ -353,7 +362,7 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
         <text x={cx} y="723" textAnchor="middle" fill="#141327" fontSize="22">{i + 1} · {BINS[i].toUpperCase()}</text></g>)}
       {w.actors.filter(actor => actor.y > -128).map(actor => {
         const drag = w.drag?.index === actor.index ? w.drag : null
-        return <g key={actor.index} transform={`translate(${(drag?.x ?? 640) - 64}, ${(drag?.y ?? actor.y) - 64})`} role="button" tabIndex={0}
+        return <g key={actor.index} transform={`translate(${(drag?.x ?? 640) - 64}, ${(drag?.y ?? actor.y) - 64})`} role="button" tabIndex={-1}
           aria-label={`Select ${actor.name}`} onPointerDown={event => startDrag(event, actor)}
           onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelected(actor.index) } }}>
           {selected === actor.index && <rect x="-4" y="-4" width="136" height="136" fill="none" stroke="#ffec27" strokeWidth="4" />}
@@ -365,8 +374,8 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
           {Array.from({ length: 14 }, (_, i) => <rect className="lava-spark" key={i} x={640 + (i - 6.5) * (progress * 20 + 2)} y={535 - progress * 110 + i % 3 * 10 + progress * progress * 45}
             width={i % 3 ? '8' : '11'} height={i % 3 ? '8' : '11'} opacity={1 - progress} fill={i % 2 ? '#ffa300' : '#ffec27'} />)}</g> })}
     </svg>
-    <div ref={keyboardControls} className="keyboard-controls"><span>{selectedItem ? `Selected: ${selectedItem.name}` : 'Drag to a bin, or press 1 / 2 / 3 for the next item. Tab + Enter selects an item.'}</span>
-      <div className="button-row">{BINS.map((bin, i) => <button key={bin} data-key={i + 1} disabled={!running || !selectedItem} onClick={() => chooseBin(i)}>{bin}</button>)}</div></div>
+    <div ref={keyboardControls} className="keyboard-controls"><span>{selectedItem ? `Selected: ${selectedItem.name}` : 'Sort the next item with 1 / 2 / 3, or drag it into a bin.'}<br /><small role="status">↑ / ↓ belt speed · {displayedSpeedLevel} / 3 · speed 0 pauses</small></span>
+      <div className="button-row">{BINS.map((bin, i) => <button key={bin} data-key={i + 1} aria-keyshortcuts={String(i + 1)} disabled={!running || !w.actors.some(item => item.y >= -64)} onClick={() => chooseBin(i)}>{bin}</button>)}</div></div>
     </div>
     </div>
     {active && prompt && <ConveyorPrompt slowdown={prompt === 'slowdown'} onContinue={continueSorting} />}

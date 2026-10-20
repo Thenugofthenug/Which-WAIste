@@ -72,11 +72,13 @@ def build_eval_set(items, idxs, rng):
     return torch.stack(X), torch.tensor(y, dtype=torch.long), owner
 
 
-def make_train_epoch(images, labels, rng):
+def make_train_epoch(images, labels, rng, augmentations_per_item=AUG_PER_ITEM):
     """Fresh augmented copies of each training item for one epoch."""
+    if type(augmentations_per_item) is not int or augmentations_per_item < 1:
+        raise ValueError('Use at least one augmented view per training item.')
     X, y = [], []
     for img, lab in zip(images, labels):
-        for _ in range(AUG_PER_ITEM):
+        for _ in range(augmentations_per_item):
             X.append(to_tensor(augment(img, rng)))
             y.append(lab)
     return torch.stack(X), torch.tensor(y, dtype=torch.long)

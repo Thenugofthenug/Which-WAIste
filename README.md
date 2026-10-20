@@ -34,7 +34,7 @@ Node.js 22.12+ and Python 3.11+ are supported. The local database is
 
 See [the Render deployment guide](docs/RENDER.md) for the exact Blueprint steps,
 DataGrip connection, database tables, exports and free-trial limits.
-Use the combined branch **`integration/temp-data-collection`** for deployment.
+Use **`which-wAIste-retro`** for the current classroom deployment.
 
 Browser records include sorting outcomes and timings, each training run,
 learning-rate choices, item tests, help topics, experiment plans, reviewed rounds
@@ -93,9 +93,29 @@ connections distinguish information without relying only on color.
 **Main menu** pauses the mission and **Resume mission** returns to the same
 items, belt speed and learning screen. **New mission** starts a fresh round.
 While sorting, **1 / 2 / 3** sends the next visible item to Recycling / Compost /
-Landfill. Tab + Enter selects a specific item; dragging still works. Number keys
-do not sort while a dialog is open, a control has focus, or progress is waiting
-to save. Speed arrows show Paused / Slow / Normal / Fast.
+Landfill. **↑ / ↓** changes belt speed between 0 (paused) and 3 (fast).
+The number keys keep working after using the speed arrows or bin buttons;
+students do not need to Tab through moving items. Dragging still works.
+Shortcuts leave text fields, other screens and dialogs alone, and wait during
+connection errors. The on-screen buttons remain usable by mouse, touch and Tab.
+
+## Quicker classroom training
+
+New runs default to **Classroom** practice: four fresh image variations per
+training item each epoch, compared with eight in **Full** practice. Both use the
+same CNN, all student-provided labels and the same held-out validation/test
+views. Missed items still have no label and stay out of training. The desktop
+game keeps its original eight variations.
+
+Start with **Classroom + 3 rounds** when testing the free Render service.
+Fewer variations reduce computation and practice; accuracy may be lower. A local
+three-round benchmark was about 1.8 times faster, which is not a promise of the
+same speedup on Render. Full practice remains available in the **Practice style**
+selector. Saved older runs are identified as Full and retain their trained models.
+
+Each run records its practice mode and variation count in `training_settings`
+and the exported training results. Run A/B comparisons show both modes and flag
+comparisons where the student changed more than one setting.
 
 ## Consistent pixel-art items
 
@@ -127,7 +147,7 @@ labels and points remain intact; fewer examples do not guarantee lower accuracy.
 The slowdown prompt appears only once per round. Afterward, students can increase
 the speed without another automatic slowdown; misses and their speeds are still
 recorded. Starting a new round enables the prompt again.
-Speed arrows still allow manual adjustment and pausing at 0 after the splash.
+Speed arrows and **↑ / ↓** allow manual adjustment and pausing at 0 after the splash.
 The larger lava pool has persistent embers and a burst of sparks for each miss.
 
 ## Robot Detective (Test)
@@ -137,7 +157,12 @@ robot eyes (pixels and actual filter maps), the decision (reveal bin scores and
 compare before/after training), and the test (try a new drawing or an unfamiliar
 item). Back/Next and the step buttons allow students to revisit each idea.
 The network diagram and demonstration weight sliders remain available as optional
-activities. Extra-help openings use the existing help-topic recording by session ID.
+activities. Compact **? definition buttons** open bubbles beside the concept,
+with the full explanation available without expanding the page. Escape, the close
+button or a click outside dismisses a bubble. Openings (including reopening a
+topic) use the existing help-topic recording by session ID; closing does not
+create an extra event. The larger diagrams and weight activity still expand in
+place so students can use their controls.
 Predictions and filter maps still come from the trained CNN, and unfamiliar-item
 results explain when none of the robot's three bins is suitable.
 

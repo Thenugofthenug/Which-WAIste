@@ -21,7 +21,7 @@ const rows = [
 function fixture(status = 'ready', count = 0) {
   return { id: '11111111-1111-4111-8111-111111111111', items: Array.from({ length: 30 }, (_, index) => ({ index, name: `Item ${index}`, image })),
     actions: Array.from({ length: 30 }, (_, index) => ({ index, outcome: index < 27 ? 'sorted' : 'missed', chosen_class: index < 27 ? index % 3 : null })),
-    summary: { resolved: 30, missed: 3 }, training: { status, epochs: 3, learning_rate: .001, history: rows.slice(0, count),
+    summary: { resolved: 30, missed: 3 }, training: { status, epochs: 3, learning_rate: .001, training_mode: 'classroom', augmentations_per_item: 4, history: rows.slice(0, count),
       results: status === 'done' ? { before_accuracy: .3, test_accuracy: .6, best_epoch: 2, predictions: [], split: { train: 19, validation: 4, test: 4 } } : null } }
 }
 let container, root, props
@@ -80,6 +80,33 @@ test('review follows completed epochs, syncs both graphs and animation, and does
   assert.deepEqual(activities, [1, 2, 3].map(epoch => ({ kind: 'epoch_review', epoch })))
 })
 
+test('floating examples use saved images and student labels, exclude misses, and replay only when the selected round changes', async () => {
+  const game = fixture('running')
+  game.actions[0] = { index: 0, outcome: 'missed', chosen_class: null }
+  game.actions[1] = { index: 1, outcome: 'sorted', chosen_class: 2, expected_class: 0 }
+  game.items[1] = { index: 1, name: 'Aluminum can', image: 'data:image/png;base64,AQ==' }
+  await render(game)
+  const stream = () => container.querySelector('.training-item-stream')
+  assert.match(stream().getAttribute('aria-label'), /Aluminum can, labeled Landfill/)
+  assert.equal(stream().querySelector('.training-item-preview img').getAttribute('src'), game.items[1].image)
+  assert.equal(stream().querySelector('.training-item-flight'), null, 'No replay before a round completes')
+  game.training.history = rows.slice(0, 1)
+  await render(game)
+  const firstFlight = stream().querySelector('.training-item-flight')
+  assert.equal(firstFlight.dataset.itemIndex, '1', 'The missed item is never sent to the robot')
+  assert.match(firstFlight.textContent, /Landfill/, 'Preserve the student label instead of correcting it')
+  assert.equal(stream().querySelectorAll('.training-item-flight').length, 4)
+  await render({ ...game })
+  assert.equal(stream().querySelector('.training-item-flight'), firstFlight, 'Polling cannot restart the illustration')
+  game.training.history = rows.slice(0, 2)
+  await render(game)
+  assert.notEqual(stream().querySelector('.training-item-flight'), firstFlight, 'A new selected epoch starts a fresh replay')
+  assert.match(container.querySelector('.training-illustration-note').textContent, /not its exact items or live progress/)
+  await render({ ...fixture(), actions: [], items: [] })
+  assert.equal(stream().querySelector('img'), null, 'Never invent pictures for an empty labeled dataset')
+  assert.match(stream().textContent, /No labeled items yet/)
+})
+
 test('one completed run unlocks testing without a second run or required quiz; help stays by graphs', async () => {
   let next = 0
   const topics = []
@@ -89,9 +116,13 @@ test('one completed run unlocks testing without a second run or required quiz; h
   assert.equal(button('Next: test your robot →').disabled, false)
   assert.equal(container.querySelectorAll('.graph-grid .curve').length, 2)
   assert.equal(container.querySelectorAll('.training-reading-guide .training-help').length, 4)
-  const help = container.querySelector('.training-reading-guide details')
-  await React.act(async () => { help.open = true; await new Promise(resolve => setTimeout(resolve, 0)) })
+  const help = container.querySelector('.training-reading-guide .definition-trigger')
+  assert.match(help.textContent, /Two lines/)
+  assert.equal(help.getAttribute('aria-label'), 'Why are there two lines?')
+  await click(help)
+  assert.match(document.querySelector('.definition-popup').textContent, /solid line checks training pictures/)
   assert.deepEqual(topics, ['testing'])
+  await click(document.querySelector('.definition-close'))
   await click(button('Next: test your robot →'))
   assert.equal(next, 1)
   assert.match(container.querySelector('[aria-label="Training result"]').textContent, /30.0% → 60.0%/)
@@ -104,11 +135,14 @@ test('optional one-setting rerun sends real settings and compares actual complet
   globalThis.fetch = async (url, init) => { requests.push([url, JSON.parse(init.body)]); return { ok: true, json: async () => ({ status: 'running' }) } }
   const first = fixture('done', 3)
   await render(first, { setGame: update => { optimistic = update(first) }, onActivity: activity => activities.push(activity) })
+  await change(container.querySelector('[aria-label="Practice style"]'), 'full')
   await click(button('Do more rounds help?'))
+  assert.equal(container.querySelector('[aria-label="Practice style"]').value, 'classroom', 'An epoch comparison keeps the original variation count')
+  assert.equal(container.querySelector('[aria-label="Practice style"]').disabled, true)
   assert.equal(container.querySelector('.training-controls input').disabled, true, 'Keep step size fixed')
   await change(container.querySelector('.training-controls select'), '10')
   await click(button('Train again'))
-  assert.deepEqual(requests, [[`/api/sessions/${first.id}/train`, { epochs: 10, learning_rate: .001 }]])
+  assert.deepEqual(requests, [[`/api/sessions/${first.id}/train`, { epochs: 10, learning_rate: .001, training_mode: 'classroom' }]])
   assert.equal(optimistic.training.results, null, 'Do not present the old result as the new result while training')
   await render(optimistic)
   assert.equal(container.querySelector('[aria-label="Compare completed runs"]'), null)
@@ -117,6 +151,42 @@ test('optional one-setting rerun sends real settings and compares actual complet
   const comparison = container.querySelector('[aria-label="Compare completed runs"]')
   assert.match(comparison.textContent, /Run A60.0%3 rounds.*Run B50.0%10 rounds/)
   assert.match(comparison.textContent, /each run starts a fresh model/)
+  assert.equal(comparison.querySelectorAll('small').length, 2)
+  assert.ok([...comparison.querySelectorAll('small')].every(label => label.textContent === 'Classroom · 4 variations/image'))
   assert.deepEqual(activities, [{ kind: 'training_plan', goal: 'more_practice' }])
   assert.equal(button('Next: test your robot →').disabled, false, 'A lower score still allows learning to continue')
+})
+
+test('classroom is the new-run default and full practice submits its disclosed variation setting', async () => {
+  const requests = []
+  let optimistic
+  globalThis.fetch = async (url, init) => { requests.push(JSON.parse(init.body)); return { ok: true, json: async () => ({ status: 'running' }) } }
+  const ready = fixture()
+  await render(ready, { setGame: update => { optimistic = update(ready) } })
+  const mode = container.querySelector('[aria-label="Practice style"]')
+  assert.equal(mode.value, 'classroom')
+  assert.match(container.querySelector('.training-mode-note').textContent, /4 image variations.*same robot.*accuracy can be lower/)
+  await change(mode, 'full')
+  assert.match(container.querySelector('.training-mode-note').textContent, /8 image variations/)
+  await click(button('Train your robot'))
+  assert.deepEqual(requests, [{ epochs: 3, learning_rate: .001, training_mode: 'full' }])
+  assert.equal(optimistic.training.training_mode, 'full')
+  assert.equal(optimistic.training.augmentations_per_item, 8)
+})
+
+test('legacy completed runs restore full practice and keep their original mode in a comparison', async () => {
+  const legacy = fixture('done', 3)
+  delete legacy.training.training_mode
+  delete legacy.training.augmentations_per_item
+  let optimistic
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ status: 'running' }) })
+  await render(legacy, { setGame: update => { optimistic = update(legacy) } })
+  assert.equal(container.querySelector('[aria-label="Practice style"]').value, 'full')
+  await change(container.querySelector('[aria-label="Practice style"]'), 'classroom')
+  await click(button('Train again'))
+  await render(optimistic)
+  await render(fixture('done', 3))
+  const comparison = container.querySelector('[aria-label="Compare completed runs"]')
+  assert.deepEqual([...comparison.querySelectorAll('small')].map(label => label.textContent), ['Full · 8 variations/image', 'Classroom · 4 variations/image'])
+  assert.match(comparison.textContent, /not a one-setting comparison/)
 })

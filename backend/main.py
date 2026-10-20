@@ -18,7 +18,7 @@ from sqlalchemy import select, text, update
 
 from backend import cnn
 from backend.database import (ActivityEvent, Base, Game, GamePlayer, HelpOpen,
-                              LearningRateAdjustment, Player, SortAction, TrainingRun,
+                              LearningRateAdjustment, Player, SortAction, TrainingRun, TrainingSettings,
                               TryClick, make_database, now)
 
 TOPICS = ('labels', 'pixels', 'filters', 'weights', 'learning', 'testing', 'accuracy', 'confidence', 'new-items')
@@ -40,6 +40,7 @@ class ActionBody(BaseModel):
 class TrainingBody(BaseModel):
     epochs: Literal[3, 10, 50] = 3
     learning_rate: float = Field(default=.001, ge=.0001, le=.1)
+    training_mode: Literal['classroom', 'full'] = 'classroom'
 
 
 class HelpBody(BaseModel):
@@ -149,6 +150,15 @@ def create_app(database_url=None):
         link = db.get(GamePlayer, str(game_id))
         return link.player_id if link else None
 
+    def training_settings(db, run_id):
+        settings = db.get(TrainingSettings, run_id) if run_id else None
+        if settings:
+            return {'training_mode': settings.training_mode,
+                    'augmentations_per_item': settings.augmentations_per_item}
+        # Historical runs used eight views; untrained games start in classroom mode.
+        mode = 'full' if run_id else 'classroom'
+        return {'training_mode': mode, 'augmentations_per_item': cnn.TRAINING_MODES[mode]}
+
     @app.get('/api/health')
     def health(db=Depends(connection)):
         db.execute(text('SELECT 1'))
@@ -175,7 +185,8 @@ def create_app(database_url=None):
         return {'id': game.id, 'player_id': player_id,
                 'items': cnn.public_items(game.seed, pixel_art=cnn.uses_pixel_art(game.version)), 'categories': cnn.CATEGORIES,
                 'actions': [], 'summary': summary([]), 'training': {
-                    'status': 'ready', 'history': [], 'learning_rate': float(game.learning_rate), 'run_id': None}}
+                    'status': 'ready', 'history': [], 'learning_rate': float(game.learning_rate), 'run_id': None,
+                    **training_settings(db, None)}}
 
     @app.get('/api/sessions/{game_id}')
     def get_game(game_id: UUID, db=Depends(connection)):
@@ -187,6 +198,7 @@ def create_app(database_url=None):
                     {'index': a.item_index, 'outcome': a.outcome, 'chosen_class': a.chosen_class,
                      'correct': a.correct, 'expected_class': a.expected_class} for a in actions],
                 'training': {'status': game.training_status, 'epochs': game.training_epochs,
+                             **training_settings(db, game.training_run_id),
                              'learning_rate': float(game.learning_rate), 'run_id': game.training_run_id,
                              'history': game.history, 'probe': game.probe, 'results': game.results,
                              'error': game.training_error}}
@@ -219,6 +231,7 @@ def create_app(database_url=None):
     def training_status(game_id: UUID, db=Depends(connection)):
         game = find_game(db, game_id)
         return {'status': game.training_status, 'epochs': game.training_epochs, 'history': game.history,
+                **training_settings(db, game.training_run_id),
                 'learning_rate': float(game.learning_rate), 'run_id': game.training_run_id,
                 'probe': game.probe, 'results': game.results, 'error': game.training_error}
 
@@ -255,7 +268,7 @@ def create_app(database_url=None):
             db.commit()
         return {'saved': True}
 
-    def train_in_background(game_id, epochs, rate):
+    def train_in_background(game_id, epochs, rate, training_mode):
         try:
             with Session() as db:
                 game = find_game(db, game_id)
@@ -272,7 +285,8 @@ def create_app(database_url=None):
                             'epoch', 'train_loss', 'train_acc', 'val_loss', 'val_acc', 'lr')}]
                         db.get(TrainingRun, game.training_run_id).history = game.history
 
-            results, weights = cnn.run_training(seed, actions, epochs, rate, emit, pixel_art=pixel_art)
+            results, weights = cnn.run_training(seed, actions, epochs, rate, emit, pixel_art=pixel_art,
+                                               training_mode=training_mode)
             with Session.begin() as db:
                 game = find_game(db, game_id)
                 game.results, game.model_weights, game.training_status = results, weights, 'done'
@@ -324,11 +338,14 @@ def create_app(database_url=None):
             game.training_run_id = str(uuid4())
             db.add(TrainingRun(id=game.training_run_id, session_id=game.id,
                                epochs=body.epochs, learning_rate=str(body.learning_rate)))
+            db.flush()
+            db.add(TrainingSettings(training_run_id=game.training_run_id, training_mode=body.training_mode,
+                                    augmentations_per_item=cnn.TRAINING_MODES[body.training_mode]))
             db.commit()
         except Exception:
             training_slot.release()
             raise
-        tasks.add_task(train_in_background, game.id, body.epochs, body.learning_rate)
+        tasks.add_task(train_in_background, game.id, body.epochs, body.learning_rate, body.training_mode)
         return {'status': 'running'}
 
     @app.post('/api/sessions/{game_id}/try-item')

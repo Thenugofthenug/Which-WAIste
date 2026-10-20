@@ -1,0 +1,12 @@
+.definition-bubble { display: inline-block; max-width: 100%; margin: 4px 6px 4px 0; vertical-align: middle; }
+.definition-bubble > .definition-trigger { display: inline-flex; align-items: center; gap: 7px; padding: 6px 8px; min-height: 36px; max-width: 100%; border: 1px solid #625b8e; background: #211f3a; color: #75e5f5; font-size: 14px; font-family: inherit; line-height: 1.45; text-align: left; box-shadow: 2px 2px 0 #080819; }
+.definition-bubble > .definition-trigger:hover, .definition-bubble > .definition-trigger[aria-expanded='true'] { background: #302b4b; border-color: #ffd66b; color: #fff1d6; }
+.definition-bubble .definition-question { display: grid; place-items: center; flex-shrink: 0; width: 17px; height: 17px; border: 1px solid currentColor; font-weight: bold; color: #ffd66b; font-size: 11px; }
+.definition-trigger:focus-visible, .definition-close:focus-visible { outline: 3px solid #ffd66b; outline-offset: 3px; }
+.definition-popup { position: fixed; z-index: 180; width: min(400px, calc(100vw - 24px)); max-height: min(70vh, 520px); overflow-y: auto; box-sizing: border-box; padding: 14px 16px; color: #fff1d6; background: #211f3a; border: 2px solid #75e5f5; box-shadow: 5px 5px 0 #080819; font-family: inherit; text-align: left; }
+.definition-popup > header { display: flex; justify-content: space-between; align-items: start; gap: 12px; border-bottom: 1px solid #625b8e; padding-bottom: 9px; margin-bottom: 10px; }
+.definition-popup > header h3 { margin: 0; color: #ffd66b; font-family: inherit; font-size: 16px; line-height: 1.5; }
+.definition-popup .definition-close { flex-shrink: 0; display: grid; place-items: center; padding: 0; width: 28px; height: 28px; min-height: 0; border: 1px solid #625b8e; background: #17162c; color: #fff1d6; box-shadow: none; font-size: 21px; line-height: 1; }
+.definition-popup .definition-content p { margin: 0 0 10px; font-size: 15px; color: #ddd8ef; line-height: 1.6; }
+.definition-popup .definition-content > :last-child { margin-bottom: 0; }
+@media (max-width: 650px) { .definition-bubble > .definition-trigger { min-height: 40px; }.definition-popup { padding: 12px 14px; }.definition-popup .definition-close { width: 34px; height: 34px; } }
