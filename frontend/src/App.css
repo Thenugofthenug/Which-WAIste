@@ -3,7 +3,7 @@
 .app-shell { max-width: 1560px; margin: auto; padding: 18px 28px 26px; }
 .arcade-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; padding: 0 0 16px; }
 .arcade-brand { display: flex; align-items: center; gap: 12px; font-family: var(--pixel-font); font-size: 11px; line-height: 1.8; }
-.brand-sprite { display: grid; place-items: center; width: 30px; height: 28px; color: var(--bg); background: var(--accent); box-shadow: 4px 4px 0 #0c0b1b; font-size: 22px; }
+.brand-sprite { display: block; flex-shrink: 0; width: 32px; height: 32px; object-fit: contain; image-rendering: pixelated; filter: drop-shadow(2px 2px 0 #0c0b1b); }
 .arcade-brand .logo-ai { color: var(--accent); }.brand-question { color: var(--gold); }
 .arcade-edition { font-size: 11px; color: var(--muted); letter-spacing: .12em; }
 .app-header { display: flex; align-items: center; justify-content: space-between; gap: 22px; margin-bottom: 20px; }

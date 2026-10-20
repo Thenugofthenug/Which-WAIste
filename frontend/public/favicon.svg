@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <title>Which wAIste</title>
-  <path d="M8 0H56V8H64V56H56V64H8V56H0V8H8Z" fill="#211f3a"/>
-  <path d="M12 16H52V44H44V52H20V44H12Z" fill="#575078" stroke="#c2bbd6" stroke-width="4"/>
-  <path d="M20 24H28V32H20ZM36 24H44V32H36Z" fill="#75e5f5"/>
-  <path d="M24 38H40M32 14V6H40" fill="none" stroke="#ffd66b" stroke-width="4"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <title>Which wAIste robot</title>
+  <path d="M14 8V2H22V4H16V8Z" fill="#75e5f5"/>
+  <path d="M20 0H24V4H20Z" fill="#ffd66b"/>
+  <path d="M4 8H28V26H22V30H10V26H4Z" fill="#c2bbd6"/>
+  <path d="M6 10H26V24H6ZM12 26H20V28H12Z" fill="#575078"/>
+  <path d="M8 14H12V18H8ZM20 14H24V18H20ZM10 20H22V22H10Z" fill="#75e5f5"/>
 </svg>

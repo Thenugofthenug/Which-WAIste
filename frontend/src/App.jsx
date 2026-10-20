@@ -100,7 +100,7 @@ export default function App() {
   const complete = game?.summary.resolved === 30
   const nextStage = view === 'sort' && complete ? 'train' : view === 'train' && game?.training.status === 'done' ? 'explore' : null
   return <main className="app-shell" data-stage={game && !showHome ? view : 'home'}>
-    <header className="arcade-header"><div className="arcade-brand"><span className="brand-sprite" aria-hidden="true">▣</span><span>which w<span className="logo-ai">AI</span>ste<span className="brand-question">?</span></span></div><span className="arcade-edition">NEURAL NETWORK ARCADE</span></header>
+    <header className="arcade-header"><div className="arcade-brand"><img className="brand-sprite" src="/favicon.svg?v=robot-3" width="32" height="32" alt="" aria-hidden="true" /><span>which w<span className="logo-ai">AI</span>ste<span className="brand-question">?</span></span></div><span className="arcade-edition">NEURAL NETWORK ARCADE</span></header>
     {(!game || showHome) && <section className="title-screen pixel-panel" aria-labelledby="home-title"><HomeRobot /><p className="eyebrow home-eyebrow">PLAYER ONE · MEET YOUR ROBOT</p><h2 id="home-title">which w<span className="logo-ai">AI</span>ste?</h2><p className="home-tagline">A little sorting. A little science. A smarter robot?</p>
       <HomePictures />
       <ol className="mission-path" aria-label="Your mission"><li><span className="mission-number">01</span><div><strong>Sort it</strong><p>Your bin choices teach the robot.</p></div></li><li><span className="mission-number">02</span><div><strong>Train it</strong><p>Watch it learn from your examples.</p></div></li><li><span className="mission-number">03</span><div><strong>Test it</strong><p>Find out what it learned.</p></div></li></ol>
