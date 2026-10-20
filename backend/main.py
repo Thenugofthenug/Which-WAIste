@@ -318,6 +318,8 @@ def create_app(database_url=None):
             raise HTTPException(429, 'Another robot is training. Your game is saved; try again shortly.')
         try:
             game.training_status, game.history, game.training_error = 'running', [], None
+            # Old results remain in TrainingRun; polls should describe this run only.
+            game.results, game.probe = None, None
             game.training_epochs, game.learning_rate = body.epochs, str(body.learning_rate)
             game.training_run_id = str(uuid4())
             db.add(TrainingRun(id=game.training_run_id, session_id=game.id,

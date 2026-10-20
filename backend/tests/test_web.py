@@ -207,6 +207,52 @@ class WebTests(unittest.TestCase):
         self.assertTrue((output / 'try_clicks.csv').exists())
         self.assertNotIn('not exported', (output / 'try_clicks.csv').read_text())
 
+    def test_accepted_rerun_clears_live_results_but_preserves_completed_run(self):
+        old_run_id = str(uuid4())
+        old_history = [{'epoch': 3, 'train_loss': .4, 'train_acc': .8,
+                        'val_loss': .6, 'val_acc': .7, 'lr': .001}]
+        old_probe = {'probe_idx': 2, 'viz': {'layers': [], 'edges': []}, 'probs': [.8, .1, .1]}
+        old_results = {'before_accuracy': .3, 'test_accuracy': .7, 'best_epoch': 3,
+                       'predictions': [{'name': 'Old can', 'image': 'old image'}]}
+        with self.app.state.Session.begin() as db:
+            game = db.get(Game, self.game['id'])
+            game.training_status, game.training_run_id = 'done', old_run_id
+            game.history, game.probe, game.results = old_history, old_probe, old_results
+            game.model_weights = b'previous trained model'
+            db.add(TrainingRun(id=old_run_id, session_id=game.id, status='done',
+                               epochs=3, learning_rate='.001', history=old_history,
+                               results=old_results))
+            for index in range(30):
+                db.add(SortAction(session_id=game.id, item_index=index, item_name=f'Item {index}',
+                                  expected_class=index % 3, chosen_class=index % 3,
+                                  outcome='sorted', correct=True, order=index,
+                                  response_ms=1000, speed='NORMAL'))
+
+        # An invalid request must leave the completed model's displayed data intact.
+        self.assertEqual(self.client.post(self.path + '/train', json={'epochs': 4}).status_code, 422)
+        untouched = self.client.get(self.path + '/training').json()
+        self.assertEqual((untouched['status'], untouched['results'], untouched['probe'], untouched['history']),
+                         ('done', old_results, old_probe, old_history))
+
+        # Hold the background job so a poll observes the real accepted/running state.
+        with patch('backend.main.BackgroundTasks.add_task') as schedule:
+            response = self.client.post(self.path + '/train', json={'epochs': 10, 'learning_rate': .002})
+        self.assertEqual(response.status_code, 202, response.text)
+        schedule.assert_called_once()
+        for training in (self.client.get(self.path + '/training').json(),
+                         self.client.get(self.path).json()['training']):
+            self.assertEqual(training['status'], 'running')
+            self.assertEqual(training['history'], [])
+            self.assertIsNone(training['probe'])
+            self.assertIsNone(training['results'], 'Do not present the prior model as the new run')
+            self.assertNotEqual(training['run_id'], old_run_id)
+
+        with self.app.state.Session() as db:
+            completed = db.get(TrainingRun, old_run_id)
+            self.assertEqual((completed.status, completed.history, completed.results),
+                             ('done', old_history, old_results))
+            self.assertEqual(db.scalar(select(func.count()).select_from(TrainingRun)), 2)
+
     def test_partial_dataset_real_training_and_saved_model_work_after_restart(self):
         expected = self.expected()
         for i in range(30):
