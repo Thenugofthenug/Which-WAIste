@@ -20,6 +20,13 @@ from sprites import cutout, render_item, sprite  # noqa: E402
 
 torch.set_num_threads(2)
 
+CURRENT_VERSION = 'lava-web-v4-guided-lab'
+
+
+def uses_pixel_art(version):
+    """Keep saved games and their trained models on the pictures they started with."""
+    return version in ('lava-web-v3-pixel-items', CURRENT_VERSION)
+
 
 def png(image):
     buffer = io.BytesIO()
@@ -27,14 +34,14 @@ def png(image):
     return 'data:image/png;base64,' + base64.b64encode(buffer.getvalue()).decode('ascii')
 
 
-def game_items(seed):
-    return make_game_items(30, random.Random(seed))
+def game_items(seed, pixel_art=True):
+    return make_game_items(30, random.Random(seed), pixel_art=pixel_art)
 
 
 @lru_cache(maxsize=64)
-def public_items(seed):
+def public_items(seed, pixel_art=True):
     return [{'index': i, 'name': item.name, 'image': png(cutout(sprite(item.image, 128)))}
-            for i, item in enumerate(game_items(seed))]
+            for i, item in enumerate(game_items(seed, pixel_art=pixel_art))]
 
 
 def serializable(value):
@@ -67,8 +74,8 @@ def inspect(model, image):
             'normalized': [round((v / 255 - .5) / .5, 3) for v in rgb], 'layers': layers}
 
 
-def run_training(seed, actions, epochs, rate, emit):
-    items = game_items(seed)
+def run_training(seed, actions, epochs, rate, emit, pixel_art=True):
+    items = game_items(seed, pixel_art=pixel_art)
     labeled = []
     for action in actions:
         if action.outcome == 'sorted':
@@ -110,7 +117,7 @@ def run_training(seed, actions, epochs, rate, emit):
             'predictions': predictions}, weights.getvalue()
 
 
-def try_item(weights, novel):
+def try_item(weights, novel, pixel_art=True):
     model = TrashCNN()
     model.load_state_dict(torch.load(io.BytesIO(weights), map_location='cpu', weights_only=True))
     rng = random.Random()
@@ -119,7 +126,7 @@ def try_item(weights, novel):
     else:
         name, draw, target = rng.choice(ITEM_TYPES)
         destination = CATEGORIES[target]
-    image = render_item(draw, rng)
+    image = render_item(draw, rng, pixel_art=pixel_art)
     viz, probabilities = probe_model(model, image)
     return {'name': name, 'image': png(image), 'probabilities': probabilities, 'destination': destination,
             'has_valid_bin': target is not None, 'viz': serializable(viz), 'inspection': inspect(model, image)}

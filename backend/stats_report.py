@@ -9,16 +9,20 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from backend.database import (Game, HelpOpen, LearningRateAdjustment, SortAction,
-                              TrainingRun, TryClick, make_database)
+from backend.database import (ActivityEvent, Game, GamePlayer, HelpOpen,
+                              LearningRateAdjustment, Player, SortAction, TrainingRun,
+                              TryClick, make_database)
 from file_consolidation.config import CATEGORIES
 
 
-def collect_report(Session):
-    """Produce research rows without exporting model weights or embedded images."""
+def collect_report(Session, include_names=False):
+    """Export linked study IDs by default; names require an explicit opt-in."""
     report = {}
     with Session() as db:
-        for model in (Game, SortAction, HelpOpen, LearningRateAdjustment, TryClick):
+        models = [Game, GamePlayer, SortAction, HelpOpen, LearningRateAdjustment, TryClick, ActivityEvent]
+        if include_names:
+            models.append(Player)
+        for model in models:
             columns = [column for column in model.__table__.columns
                        if column.name not in ('model_weights', 'results', 'probe', 'history')]
             report[model.__tablename__] = (list(column.name for column in columns),
@@ -82,10 +86,12 @@ def export_csv(report, folder):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--csv', type=Path, help='Write tables and a game summary to this folder.')
+    parser.add_argument('--include-names', action='store_true',
+                        help='Also export the separate players table containing first and last names.')
     args = parser.parse_args()
     engine, Session = make_database()
     try:
-        report = collect_report(Session)
+        report = collect_report(Session, include_names=args.include_names)
         for name, (_, rows) in report.items():
             print(f'{name}: {len(rows)} rows')
         if args.csv:

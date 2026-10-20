@@ -66,6 +66,12 @@ button[aria-pressed='true'], .stage-nav button[aria-current] { border-color: var
 .home-description { color: var(--muted); font-size: 13px; }
 .start-button.green { font-family: var(--pixel-font); font-size: 12px; padding: 18px 38px; line-height: 1.5; letter-spacing: 0; }
 .home-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px; margin-top: 20px; }
+.student-entry { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 0 20px; max-width: 850px; margin: 20px auto 0; padding: 16px 20px; border: 2px solid var(--line); background: var(--inset); text-align: left; }
+.student-entry-heading { grid-column: 1 / -1; }
+.student-entry-heading h3 { margin: 0 0 6px; font-size: 16px; color: var(--gold); }.student-entry-heading p { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0 0 14px; }
+.student-name-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }.student-name-fields label { display: grid; gap: 6px; color: var(--text); font-size: 13px; font-weight: bold; }
+.student-name-fields input { width: 100%; min-width: 0; border: 2px solid var(--line); border-radius: 0; background: #29243f; color: var(--text); font: inherit; font-size: 16px; padding: 10px 12px; }
+.student-entry .home-actions { margin-top: 0; }.student-entry .start-button { padding: 15px 24px; }.student-ready { display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; color: var(--muted); font-size: 12px; }.student-ready button { padding: 6px 10px; font-size: 11px; }
 .title-screen > .home-prompt { font-size: 12px; color: var(--muted); margin: 14px auto 0; }
 .mission-path { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; gap: 12px; max-width: 860px; padding: 0; margin: 20px auto; text-align: left; }
 .mission-path li { display: flex; align-items: center; gap: 12px; padding: 14px; border: 2px solid var(--line); border-top: 3px solid var(--accent); background: var(--inset); }
@@ -86,6 +92,7 @@ button[aria-pressed='true'], .stage-nav button[aria-current] { border-color: var
 .save-indicator { color: var(--muted); font-size: 11px; }
 .conveyor-svg { display: block; width: 100%; height: auto; aspect-ratio: 1920 / 770; margin-inline: auto; touch-action: none; user-select: none; }
 .conveyor-svg [role='button'] { cursor: grab; }
+.conveyor-svg image { image-rendering: pixelated; }
 .conveyor-svg [role='button']:active { cursor: grabbing; }
 .belt-action-buttons { display: flex; flex-direction: column; justify-content: space-between; height: 180px; }
 .belt-action-buttons button { width: 100%; height: 70px; padding: 8px; font-size: 23px; line-height: 1.15; }
@@ -258,6 +265,7 @@ footer { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wr
 }
 @media (max-width: 650px) {
   .app-shell { padding: 12px; }.arcade-edition { display: none; }.arcade-header { padding-bottom: 12px; min-height: 40px; }
+  .student-entry { display: block; padding: 14px; }.student-name-fields { grid-template-columns: 1fr; gap: 12px; }.student-entry .home-actions { margin-top: 16px; }
   .title-screen { margin: 0 auto; padding: 22px 14px 16px; }.title-screen h2 { font-size: clamp(20px, 5vw, 30px); }.home-tagline { font-size: 14px; }
   .home-pictures { margin: 18px auto; gap: 8px; }.home-pictures figcaption { font-size: 11px; }.home-pictures figure { padding: 4px 4px 0; }
   .mission-path { grid-template-columns: 1fr; gap: 8px; margin: 16px auto; }.mission-path li { padding: 10px 12px; }.mission-path strong { font-size: 9px; }.mission-path p { margin-top: 3px; }

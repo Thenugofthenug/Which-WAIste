@@ -1,7 +1,7 @@
 """Export start-screen pictures from the sorting game's playable catalog.
 
 Run from the repository root with:
-.venv312/bin/python -B frontend/scripts/export_home_items.py
+.\\.venv\\Scripts\\python.exe -B frontend/scripts/export_home_items.py
 """
 import json
 import random

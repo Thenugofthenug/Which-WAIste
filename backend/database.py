@@ -1,4 +1,4 @@
-"""Durable anonymous game records. SQLite locally, PostgreSQL on Render."""
+"""Durable game records. SQLite locally, PostgreSQL on Render."""
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,6 +32,21 @@ class Game(Base):
     model_weights: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
     training_error: Mapped[str | None] = mapped_column(Text)
     training_run_id: Mapped[str | None] = mapped_column(String(36))
+
+
+class Player(Base):
+    __tablename__ = 'players'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    first_name: Mapped[str] = mapped_column(String(80))
+    last_name: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class GamePlayer(Base):
+    # A link table keeps existing game rows/schema intact and names in one place.
+    __tablename__ = 'game_players'
+    session_id: Mapped[str] = mapped_column(ForeignKey('game_sessions.id', ondelete='CASCADE'), primary_key=True)
+    player_id: Mapped[str] = mapped_column(ForeignKey('players.id'), index=True)
 
 
 class TrainingRun(Base):
@@ -90,6 +105,16 @@ class TryClick(Base):
     confidence: Mapped[float] = mapped_column(Float)
     destination: Mapped[str] = mapped_column(String(160))
     correct: Mapped[bool | None]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ActivityEvent(Base):
+    __tablename__ = 'activity_events'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey('game_sessions.id', ondelete='CASCADE'), index=True)
+    training_run_id: Mapped[str | None] = mapped_column(ForeignKey('training_runs.id'))
+    kind: Mapped[str] = mapped_column(String(24))
+    data: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

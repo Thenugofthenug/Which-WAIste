@@ -5,9 +5,10 @@ Rendering: the drawing helpers used by the item catalog, the optional PICO-8
 palette snap, and the functions that turn a drawing into a game sprite.
 """
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 from config import DRAW_SIZE, PALETTE_SPRITES, PICO, PIXEL_RES, RESAMPLE, hex_to_rgb
+from pixel_items import draw_pixel_item
 
 # Light, neutral backgrounds: they vary only slightly, so the background never
 # competes with the item for the network's attention.
@@ -79,7 +80,7 @@ def sprite(img, size):
     return img.resize((PIXEL_RES, PIXEL_RES), RESAMPLE.NEAREST).resize((size, size), RESAMPLE.NEAREST)
 
 
-def render_item(draw_fn, rng):
+def _render_classic_item(draw_fn, rng):
     """Draw one item with a slight random tint, position, size and tilt.
     draw_fn(draw, rng, center_x, center_y, scale) comes from the item catalog;
     items are designed to span about -48..48 units around the center."""
@@ -96,6 +97,36 @@ def render_item(draw_fn, rng):
     return pixelate(img)
 
 
+def render_item(draw_fn, rng, *, pixel_art=True):
+    """Use one consistent inventory design per item, with small pose variations.
+
+    Keep the original renderer available for saved games and their trained models.
+    The CNN still receives an RGB image; transparency is only added for display.
+    """
+    if not pixel_art:
+        return _render_classic_item(draw_fn, rng)
+    item = draw_pixel_item(draw_fn.__name__, rng)
+    if item is None:
+        return _render_classic_item(draw_fn, rng)
+
+    # A one-pixel outline makes pale paper and glass readable on a dark belt.
+    outline = Image.new('RGBA', item.size, (37, 29, 47, 0))
+    outline.putalpha(item.getchannel('A').filter(ImageFilter.MaxFilter(3)))
+    outline.alpha_composite(item)
+    outline = outline.rotate(rng.choice((-5, 0, 5)), resample=RESAMPLE.NEAREST)
+    size = rng.choice((29, 30, 31))
+    outline = outline.resize((size, size), RESAMPLE.NEAREST)
+    background = (224, 230, 238)
+    small = Image.new('RGB', (32, 32), background)
+    x = (32 - size) // 2 + rng.choice((-1, 0, 1))
+    y = (32 - size) // 2 + rng.choice((-1, 0, 1))
+    small.paste(outline, (x, y), outline)
+    result = small.resize((DRAW_SIZE, DRAW_SIZE), RESAMPLE.NEAREST)
+    result.info['sprite_style'] = 'inventory-v1'
+    result.info['sprite_background'] = background
+    return result
+
+
 def cutout(img, tol=10):
     """Remove the plain background around an item so it can sit on the conveyor
     belt; the floor shadow becomes a smooth translucent shadow.
@@ -103,6 +134,13 @@ def cutout(img, tol=10):
     A pixel counts as floor if it's the background color dimmed by some factor k
     (k = 1 is bare background, k = 0.9 is full shadow, in between are the
     blended edges). Floor pixels become black with alpha that grows as k drops."""
+    if img.info.get('sprite_style') == 'inventory-v1':
+        # Remove only the known background. The old brightness heuristic can
+        # mistake light newspaper or cup pixels for floor and turn them black.
+        out = np.array(img.convert('RGBA'))
+        floor = np.all(out[:, :, :3] == img.info['sprite_background'], axis=2)
+        out[floor] = (0, 0, 0, 0)
+        return Image.fromarray(out)
     rgb = np.asarray(img.convert("RGB")).astype(float)
     bg = rgb[0, 0]
     k = rgb.mean(axis=2) / max(bg.mean(), 1.0)                 # brightness relative to background

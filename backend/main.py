@@ -13,12 +13,13 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select, text, update
 
 from backend import cnn
-from backend.database import (Base, Game, HelpOpen, LearningRateAdjustment, SortAction,
-                              TrainingRun, TryClick, make_database, now)
+from backend.database import (ActivityEvent, Base, Game, GamePlayer, HelpOpen,
+                              LearningRateAdjustment, Player, SortAction, TrainingRun,
+                              TryClick, make_database, now)
 
 TOPICS = ('labels', 'pixels', 'filters', 'weights', 'learning', 'testing', 'accuracy', 'confidence', 'new-items')
 
@@ -49,6 +50,51 @@ class HelpBody(BaseModel):
 class LearningRateBody(BaseModel):
     event_id: UUID
     exponent: float = Field(ge=-4, le=-1, allow_inf_nan=False)
+
+
+class PlayerBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    first_name: str = Field(min_length=1, max_length=80)
+    last_name: str = Field(min_length=1, max_length=80)
+
+    @field_validator('first_name', 'last_name', mode='before')
+    @classmethod
+    def trim_name(cls, value):
+        if isinstance(value, str):
+            value = value.strip()
+            if any(ord(character) < 32 or ord(character) == 127 for character in value):
+                raise ValueError('Names cannot contain control characters.')
+        return value
+
+
+class SessionBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    player_id: UUID | None = None
+
+
+class ActivityBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    event_id: UUID
+    kind: Literal['training_plan', 'epoch_review', 'weight_experiment']
+    training_run_id: UUID | None = None
+    goal: Literal['more_practice', 'step_size'] | None = None
+    epoch: int | None = Field(default=None, ge=1, le=50, strict=True)
+    response: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False, strict=True)
+    weight: float | None = Field(default=None, ge=-3, le=3, allow_inf_nan=False, strict=True)
+
+    @model_validator(mode='after')
+    def valid_activity(self):
+        allowed = {
+            'training_plan': {'goal'},
+            'epoch_review': {'epoch'},
+            'weight_experiment': {'response', 'weight'},
+        }[self.kind]
+        values = {key: getattr(self, key) for key in ('goal', 'epoch', 'response', 'weight')}
+        if self.model_fields_set.intersection(values) - allowed:
+            raise ValueError('This activity contains fields for a different activity.')
+        if any(values[key] is None for key in allowed):
+            raise ValueError('This activity is missing a required field.')
+        return self
 
 
 def summary(actions):
@@ -99,28 +145,49 @@ def create_app(database_url=None):
     def actions_for(db, game_id):
         return list(db.scalars(select(SortAction).where(SortAction.session_id == str(game_id)).order_by(SortAction.order)))
 
+    def player_for(db, game_id):
+        link = db.get(GamePlayer, str(game_id))
+        return link.player_id if link else None
+
     @app.get('/api/health')
     def health(db=Depends(connection)):
         db.execute(text('SELECT 1'))
         return {'status': 'ok', 'database': engine.dialect.name}
 
-    @app.post('/api/sessions', status_code=201)
-    def new_game(db=Depends(connection)):
-        game = Game(id=str(uuid4()), seed=secrets.randbits(31))
-        db.add(game)
+    @app.post('/api/players', status_code=201)
+    def new_player(body: PlayerBody, db=Depends(connection)):
+        player = Player(id=str(uuid4()), first_name=body.first_name, last_name=body.last_name)
+        db.add(player)
         db.commit()
-        return {'id': game.id, 'items': cnn.public_items(game.seed), 'categories': cnn.CATEGORIES,
-                'actions': [], 'summary': summary([]), 'training': {'status': 'ready', 'history': []}}
+        return {'id': player.id}
+
+    @app.post('/api/sessions', status_code=201)
+    def new_game(body: SessionBody | None = None, db=Depends(connection)):
+        player_id = str(body.player_id) if body and body.player_id else None
+        if player_id and db.get(Player, player_id) is None:
+            raise HTTPException(404, 'Player not found. Please enter your name again.')
+        game = Game(id=str(uuid4()), seed=secrets.randbits(31), version=cnn.CURRENT_VERSION)
+        db.add(game)
+        if player_id:
+            db.flush()
+            db.add(GamePlayer(session_id=game.id, player_id=player_id))
+        db.commit()
+        return {'id': game.id, 'player_id': player_id,
+                'items': cnn.public_items(game.seed, pixel_art=cnn.uses_pixel_art(game.version)), 'categories': cnn.CATEGORIES,
+                'actions': [], 'summary': summary([]), 'training': {
+                    'status': 'ready', 'history': [], 'learning_rate': float(game.learning_rate), 'run_id': None}}
 
     @app.get('/api/sessions/{game_id}')
     def get_game(game_id: UUID, db=Depends(connection)):
         game = find_game(db, game_id)
         actions = actions_for(db, game.id)
-        return {'id': game.id, 'items': cnn.public_items(game.seed), 'categories': cnn.CATEGORIES,
+        return {'id': game.id, 'player_id': player_for(db, game.id),
+                'items': cnn.public_items(game.seed, pixel_art=cnn.uses_pixel_art(game.version)), 'categories': cnn.CATEGORIES,
                 'summary': summary(actions), 'actions': [
                     {'index': a.item_index, 'outcome': a.outcome, 'chosen_class': a.chosen_class,
                      'correct': a.correct, 'expected_class': a.expected_class} for a in actions],
                 'training': {'status': game.training_status, 'epochs': game.training_epochs,
+                             'learning_rate': float(game.learning_rate), 'run_id': game.training_run_id,
                              'history': game.history, 'probe': game.probe, 'results': game.results,
                              'error': game.training_error}}
 
@@ -136,7 +203,7 @@ def create_app(database_url=None):
             return {'correct': previous.correct, 'expected_class': previous.expected_class,
                     'summary': summary(actions_for(db, game.id))}
         actions = actions_for(db, game.id)
-        item = cnn.game_items(game.seed)[index]
+        item = cnn.game_items(game.seed, pixel_art=cnn.uses_pixel_art(game.version))[index]
         action = SortAction(session_id=game.id, item_index=index, item_name=item.name,
                             expected_class=item.expected, chosen_class=body.chosen_class,
                             outcome=body.outcome, correct=body.chosen_class == item.expected,
@@ -152,6 +219,7 @@ def create_app(database_url=None):
     def training_status(game_id: UUID, db=Depends(connection)):
         game = find_game(db, game_id)
         return {'status': game.training_status, 'epochs': game.training_epochs, 'history': game.history,
+                'learning_rate': float(game.learning_rate), 'run_id': game.training_run_id,
                 'probe': game.probe, 'results': game.results, 'error': game.training_error}
 
     @app.post('/api/sessions/{game_id}/help', status_code=201)
@@ -165,11 +233,34 @@ def create_app(database_url=None):
             db.commit()
         return {'saved': True}
 
+    @app.post('/api/sessions/{game_id}/activity', status_code=201)
+    def record_activity(game_id: UUID, body: ActivityBody, db=Depends(connection)):
+        game = find_game(db, game_id, lock=True)
+        run_id = str(body.training_run_id) if body.training_run_id else None
+        if run_id:
+            run = db.get(TrainingRun, run_id)
+            if run is None or run.session_id != game.id:
+                raise HTTPException(422, 'Training run does not belong to this game.')
+            if body.kind == 'epoch_review' and body.epoch not in {
+                    entry.get('epoch') for entry in run.history}:
+                raise HTTPException(422, 'This training epoch is not available to review.')
+        data = body.model_dump(exclude={'event_id', 'kind', 'training_run_id'}, exclude_none=True)
+        previous = db.get(ActivityEvent, str(body.event_id))
+        if previous and (previous.session_id != game.id or previous.training_run_id != run_id
+                         or previous.kind != body.kind or previous.data != data):
+            raise HTTPException(409, 'Activity event already exists with different data.')
+        if not previous:
+            db.add(ActivityEvent(id=str(body.event_id), session_id=game.id,
+                                 training_run_id=run_id, kind=body.kind, data=data))
+            db.commit()
+        return {'saved': True}
+
     def train_in_background(game_id, epochs, rate):
         try:
             with Session() as db:
                 game = find_game(db, game_id)
                 seed = game.seed
+                pixel_art = cnn.uses_pixel_art(game.version)
                 actions = actions_for(db, game_id)
 
             def emit(kind, payload):
@@ -181,7 +272,7 @@ def create_app(database_url=None):
                             'epoch', 'train_loss', 'train_acc', 'val_loss', 'val_acc', 'lr')}]
                         db.get(TrainingRun, game.training_run_id).history = game.history
 
-            results, weights = cnn.run_training(seed, actions, epochs, rate, emit)
+            results, weights = cnn.run_training(seed, actions, epochs, rate, emit, pixel_art=pixel_art)
             with Session.begin() as db:
                 game = find_game(db, game_id)
                 game.results, game.model_weights, game.training_status = results, weights, 'done'
@@ -243,7 +334,7 @@ def create_app(database_url=None):
         game = find_game(db, game_id)
         if game.training_status != 'done' or not game.model_weights:
             raise HTTPException(409, 'Train your robot first.')
-        result = cnn.try_item(game.model_weights, novel)
+        result = cnn.try_item(game.model_weights, novel, pixel_art=cnn.uses_pixel_art(game.version))
         predicted = result['probabilities'].index(max(result['probabilities']))
         expected = cnn.CATEGORIES.index(result['destination']) if result['has_valid_bin'] else None
         db.add(TryClick(id=str(uuid4()), session_id=game.id, training_run_id=game.training_run_id,
@@ -256,6 +347,8 @@ def create_app(database_url=None):
     dist = Path(__file__).resolve().parents[1] / 'frontend' / 'dist'
     if (dist / 'assets').is_dir():
         app.mount('/assets', StaticFiles(directory=dist / 'assets'), name='assets')
+    if (dist / 'fonts').is_dir():
+        app.mount('/fonts', StaticFiles(directory=dist / 'fonts'), name='fonts')
 
     @app.get('/')
     def root():

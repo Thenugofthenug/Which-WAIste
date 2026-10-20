@@ -1,4 +1,6 @@
 """API/data integrity tests, including real CNN training and restart recovery."""
+import base64
+import io
 import tempfile
 import os
 import unittest
@@ -7,6 +9,7 @@ from uuid import uuid4
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy import create_engine, func, select, text
 
 from backend import cnn
@@ -47,7 +50,72 @@ class WebTests(unittest.TestCase):
     def expected(self):
         with self.app.state.Session() as db:
             game = db.get(Game, self.game['id'])
-            return [item.expected for item in cnn.game_items(game.seed)]
+            return [item.expected for item in cnn.game_items(game.seed, pixel_art=cnn.uses_pixel_art(game.version))]
+
+    def test_new_artwork_keeps_rgb_model_inputs_and_transparent_browser_images(self):
+        with self.app.state.Session() as db:
+            game = db.get(Game, self.game['id'])
+            self.assertEqual(game.version, cnn.CURRENT_VERSION)
+            current = cnn.game_items(game.seed)
+            legacy = cnn.game_items(game.seed, pixel_art=False)
+        self.assertEqual([(item.name, item.expected) for item in current],
+                         [(item.name, item.expected) for item in legacy])
+        self.assertTrue(all(item.image.mode == 'RGB' and item.image.size == (128, 128) for item in current))
+        self.assertNotEqual(current[0].image.tobytes(), legacy[0].image.tobytes())
+        image = Image.open(io.BytesIO(base64.b64decode(self.game['items'][0]['image'].split(',', 1)[1])))
+        self.assertEqual((image.mode, image.size), ('RGBA', (128, 128)))
+        self.assertEqual(image.getpixel((0, 0))[3], 0)
+
+    def test_legacy_saved_game_restores_its_original_artwork(self):
+        game_id, seed = str(uuid4()), 8675309
+        with self.app.state.Session.begin() as db:
+            # The existing default stays legacy; no data migration is required.
+            db.add(Game(id=game_id, seed=seed))
+        expected = cnn.public_items(seed, pixel_art=False)
+        with TestClient(create_app(self.url)) as restarted:
+            restored = restarted.get('/api/sessions/' + game_id)
+            self.assertEqual(restored.status_code, 200)
+            self.assertEqual(restored.json()['items'], expected)
+        self.assertFalse(cnn.uses_pixel_art('lava-web-v2-analytics'))
+        self.assertFalse(cnn.uses_pixel_art('unknown-version'))
+
+    def test_training_and_new_predictions_use_the_saved_artwork_version(self):
+        prediction = dict(name='Aluminum can', image='image', probabilities=[.8, .1, .1],
+                          destination='Recycling', has_valid_bin=True)
+        for pixel_art in (True, False):
+            with self.subTest(pixel_art=pixel_art):
+                game_id, seed = str(uuid4()), 123
+                with self.app.state.Session.begin() as db:
+                    db.add(Game(id=game_id, seed=seed, version=(
+                        cnn.CURRENT_VERSION if pixel_art else 'lava-web-v2-analytics')))
+                path = '/api/sessions/' + game_id
+                items = cnn.game_items(seed, pixel_art=pixel_art)
+                with patch('backend.cnn.game_items', wraps=cnn.game_items) as regenerate:
+                    result = self.client.post(path + '/items/0', json={
+                        'outcome': 'sorted', 'chosen_class': items[0].expected, 'response_ms': 1000, 'speed': 'NORMAL'})
+                    self.assertEqual(result.status_code, 200)
+                    regenerate.assert_called_once_with(seed, pixel_art=pixel_art)
+                with self.app.state.Session.begin() as db:
+                    for index, item in enumerate(items[1:], 1):
+                        db.add(SortAction(session_id=game_id, item_index=index, item_name=item.name,
+                                          expected_class=item.expected, chosen_class=item.expected,
+                                          outcome='sorted', correct=True, order=index, response_ms=1000, speed='NORMAL'))
+                with patch('backend.cnn.run_training', return_value=({'predictions': []}, b'saved model')) as train:
+                    self.assertEqual(self.client.post(path + '/train', json={'epochs': 3}).status_code, 202)
+                    self.assertEqual(self.client.get(path + '/training').json()['status'], 'done')
+                    self.assertEqual(train.call_args.kwargs, {'pixel_art': pixel_art})
+                    self.assertEqual(train.call_args.args[0], seed)
+                with patch('backend.cnn.try_item', return_value=prediction) as try_item:
+                    self.assertEqual(self.client.post(path + '/try-item?novel=true', json={}).status_code, 200)
+                    try_item.assert_called_once_with(b'saved model', True, pixel_art=pixel_art)
+
+    def test_built_frontend_pixel_font_is_served(self):
+        font = Path(__file__).resolve().parents[2] / 'frontend' / 'dist' / 'fonts' / 'PressStart2P-Regular.ttf'
+        if not font.is_file():
+            self.skipTest('Build the frontend first to check its hosted font.')
+        response = self.client.get('/fonts/PressStart2P-Regular.ttf')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, font.read_bytes())
 
     def test_health_and_validation(self):
         self.assertEqual(self.client.get('/api/health').status_code, 200)

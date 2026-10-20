@@ -13,8 +13,8 @@ CATEGORIES = ["Recycling", "Compost", "Landfill"]
 NUM_ITEMS = 30                 # items the player sorts
 EPOCHS = 50                    # training epochs
 DRAW_SIZE = 128                # items are drawn at this size...
-PIXEL_RES = 64                 # ...then reduced to 64x64 (matches IMG_SIZE, so the CNN loses no detail)
-PALETTE_SPRITES = False        # True = snap colors to the 16-color PICO-8 palette (more 8-bit, less clear)
+PIXEL_RES = 64                 # display sampling grid; new 32-pixel inventory art stays crisp at 64
+PALETTE_SPRITES = False        # optional PICO-8 snap for the original saved-game artwork
 IMG_SIZE = 64                  # network input size
 BATCH_SIZE = 16
 AUG_PER_ITEM = 8               # augmented copies of each training item per epoch

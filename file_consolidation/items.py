@@ -322,7 +322,7 @@ class TrashItem:
     label: Optional[int] = None    # the player's choice (the training label)
 
 
-def make_game_items(n=NUM_ITEMS, rng=None):
+def make_game_items(n=NUM_ITEMS, rng=None, *, pixel_art=True):
     """n items, cycling through every type in shuffled rounds so all types appear."""
     rng = rng or random.Random()
     order = []
@@ -333,5 +333,5 @@ def make_game_items(n=NUM_ITEMS, rng=None):
     items = []
     for k in order[:n]:
         name, fn, expected = ITEM_TYPES[k]
-        items.append(TrashItem(name, render_item(fn, rng), expected))
+        items.append(TrashItem(name, render_item(fn, rng, pixel_art=pixel_art), expected))
     return items

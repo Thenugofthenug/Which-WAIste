@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { api } from './api'
 import { BINS, COLORS } from './gameEngine'
 import HomeRobot from './HomeRobot'
@@ -51,16 +51,88 @@ function Scores({ values }) {
   </div>)}</div>
 }
 
-function WeightExperiment({ track }) {
-  const [response, setResponse] = useState(.8), [weight, setWeight] = useState(1)
-  const exponentials = [.7, response * weight, .5].map(value => Math.exp(value))
-  const total = exponentials.reduce((a, b) => a + b)
-  return <section className="detective-weight"><h3>Play with a weight</h3>
-    <p className="muted">A tiny demonstration model. These sliders do not change your trained CNN.</p>
-    <label>Pattern response: {response.toFixed(1)}<input type="range" min="0" max="1" step=".1" value={response} onChange={e => setResponse(Number(e.target.value))} /></label>
-    <label>Weight toward Compost: {weight.toFixed(1)}<input type="range" min="-3" max="3" step=".1" value={weight} onChange={e => setWeight(Number(e.target.value))} /></label>
-    <p>Response × weight = {(response * weight).toFixed(2)}</p><Scores values={exponentials.map(value => value / total)} />
-    <ExtraHelp title="Try this + extra help" topic="weights" track={track}><p>Make Compost the highest score, then lower it. What happens with a negative weight or a zero response? Recycling and Landfill start at 0.7 and 0.5. Softmax turns the three values into scores adding to 100%.</p></ExtraHelp>
+const STARTING_KNOBS = { response: .8, weight: .5 }
+
+// Deliberately small demonstration: it never changes the trained CNN or its scores.
+export function WeightExperiment({ track, onActivity, navigationKey }) {
+  const [knobs, setKnobs] = useState(STARTING_KNOBS)
+  const [progress, setProgress] = useState({ raised: false, lowered: false, negative: false, zero: false })
+  const { response, weight } = knobs, contribution = response * weight
+  const raw = [.7, contribution, .5], exponentials = raw.map(value => Math.exp(value))
+  const total = exponentials.reduce((a, b) => a + b), probabilities = exponentials.map(value => value / total)
+  const selected = raw.indexOf(Math.max(...raw)), labelId = useId()
+  const latest = useRef(STARTING_KNOBS), pending = useRef(null), timer = useRef(null), record = useRef(onActivity)
+  useEffect(() => { record.current = onActivity }, [onActivity])
+  function flush() {
+    clearTimeout(timer.current)
+    const event = pending.current
+    pending.current = null
+    if (event) record.current?.(event)
+  }
+  function queueActivity(next) {
+    pending.current = { kind: 'weight_experiment', ...next }
+    clearTimeout(timer.current)
+    timer.current = setTimeout(flush, 700)
+  }
+  function changeKnob(changes) {
+    const next = { ...latest.current, ...changes }
+    if (next.response === latest.current.response && next.weight === latest.current.weight) return
+    latest.current = next
+    setKnobs(next)
+    const nextContribution = next.response * next.weight
+    setProgress(current => ({
+      raised: current.raised || nextContribution > .7,
+      lowered: current.lowered || (current.raised && nextContribution < .7),
+      negative: current.negative || next.weight < 0,
+      zero: current.zero || next.response === 0,
+    }))
+    queueActivity(next)
+  }
+  function reset() {
+    // Keep the last explored setting, even if reset happens during a drag's debounce.
+    flush()
+    if (latest.current.response !== STARTING_KNOBS.response || latest.current.weight !== STARTING_KNOBS.weight) queueActivity(STARTING_KNOBS)
+    latest.current = STARTING_KNOBS
+    setKnobs(STARTING_KNOBS)
+    setProgress({ raised: false, lowered: false, negative: false, zero: false })
+  }
+  useEffect(() => { flush() }, [navigationKey])
+  useEffect(() => () => flush(), [])
+  return <section className="detective-weight" aria-label="Demonstration weights lab">
+    <header className="weight-lab-heading"><div><p className="eyebrow">Bonus level / You control the connection</p><h3>Flip the robot's pick</h3><p className="muted">A tiny demonstration model. These sliders do not change your trained CNN.</p></div><button onClick={reset}>Reset experiment</button></header>
+    <div className="weight-lab-grid">
+      <div className="weight-controls inset">
+        <p className="eyebrow">Your mission</p>
+        <ol className="weight-milestones" aria-label="Weight experiment goals">
+          <li data-complete={progress.raised || undefined}><span aria-hidden="true">{progress.raised ? '✓' : '1'}</span><div>Make Compost the highest score.<small>{progress.raised ? 'Done! You boosted its connection.' : 'Increase its weight. Watch the scores change.'}</small></div></li>
+          <li data-complete={progress.lowered || undefined}><span aria-hidden="true">{progress.lowered ? '✓' : '2'}</span><div>Then make another bin win.<small>{progress.lowered ? 'Done! The same response can lead to a different pick.' : 'Lower the weight or turn down the response.'}</small></div></li>
+        </ol>
+        <p className="weight-mission-status" role="status">{progress.lowered ? 'Connection mastered! A weight can change the winning bin.' : progress.raised ? 'Compost reached the top. Now lower its score until another bin wins.' : 'Recycling leads. Can you move Compost into first place?'}</p>
+        <label>Pattern response: <output>{response.toFixed(1)}</output><input type="range" min="0" max="1" step=".1" value={response} aria-describedby={`${labelId}-response-help`} onChange={e => changeKnob({ response: Number(e.target.value) })} /></label>
+        <p className="weight-control-help" id={`${labelId}-response-help`}>How strongly a pretend filter responds. Zero switches this signal off.</p>
+        <label>Weight toward Compost: <output>{weight.toFixed(1)}</output><input type="range" min="-3" max="3" step=".1" value={weight} aria-describedby={`${labelId}-weight-help`} onChange={e => changeKnob({ weight: Number(e.target.value) })} /></label>
+        <p className="weight-control-help" id={`${labelId}-weight-help`}>Positive boosts the raw value. Negative lowers it. This experiment's other two raw values stay fixed.</p>
+        <div className="weight-discoveries" aria-label="Extra things to explore"><span data-found={progress.negative || undefined}>{progress.negative ? '✓' : '◇'} Try a negative weight</span><span data-found={progress.zero || undefined}>{progress.zero ? '✓' : '◇'} Try a zero response</span></div>
+      </div>
+      <div className="weight-decision inset">
+        <p className="eyebrow">Live decision / Follow the numbers</p>
+        <svg className="weight-mini-network" viewBox="0 0 500 232" role="img" aria-label={`Demonstration: response ${response.toFixed(1)} times weight ${weight.toFixed(1)} gives Compost raw value ${contribution.toFixed(2)}. Recycling raw value 0.70; Landfill raw value 0.50. Current pick: ${BINS[selected]}.`}>
+          <text x="74" y="21" textAnchor="middle">PATTERN</text><text x="249" y="21" textAnchor="middle">WEIGHT</text><text x="421" y="21" textAnchor="middle">RAW VALUES</text>
+          <path d="M126 116 H360" fill="none" stroke={weight < 0 ? '#ff8d8d' : '#b5e879'} strokeWidth={2 + Math.abs(contribution) * 2} strokeDasharray={weight < 0 ? '7 5' : undefined} />
+          <rect x="20" y="87" width="108" height="58" className="weight-signal-node" />
+          <text x="74" y="110" textAnchor="middle">Response</text><text className="weight-number" x="74" y="131" textAnchor="middle">{response.toFixed(1)}</text>
+          <rect x="202" y="94" width="94" height="43" className="weight-edge-label" /><text className="weight-number" x="249" y="121" textAnchor="middle">× {weight.toFixed(1)}</text>
+          {BINS.map((bin, i) => <g key={bin} data-picked={selected === i || undefined}><rect x="360" y={36 + i * 58} width="124" height="44" stroke={COLORS[i]} className="weight-bin-node" /><text x="422" y={53 + i * 58} textAnchor="middle">{bin}</text><text className="weight-number" x="422" y={72 + i * 58} textAnchor="middle">{raw[i].toFixed(2)}</text></g>)}
+          <text x="250" y="219" textAnchor="middle">Only the Compost connection is adjustable here.</text>
+        </svg>
+        <div className="weight-mobile-flow" aria-hidden="true"><span>Pattern<strong>{response.toFixed(1)}</strong></span><b>×</b><span>Weight<strong>{weight.toFixed(1)}</strong></span><b>→</b><span>Compost raw<strong>{contribution.toFixed(2)}</strong></span></div>
+        <div className="weight-equation"><span>Response × weight</span><strong>{response.toFixed(1)} × {weight.toFixed(1)} = {contribution.toFixed(2)}</strong></div>
+        <p className="weight-softmax-note">Softmax turns these raw values into three scores that add up to 100%.</p>
+        <Scores values={probabilities} />
+        <p className="weight-live-pick">Demo robot's pick: <strong style={{ color: COLORS[selected] }}>{BINS[selected]}</strong></p>
+      </div>
+    </div>
+    <ExtraHelp title="Try this + extra help" topic="weights" track={track}><p>Make Compost the highest score, then lower it. A negative weight pulls its raw value down. A zero response contributes zero, whatever the weight. Recycling and Landfill start at 0.7 and 0.5. Softmax turns the three values into scores adding to 100%.</p><p>This tiny model has one adjustable connection. Your real CNN learns many connections during training, using your labeled images. Experimenting here does not retrain it.</p></ExtraHelp>
   </section>
 }
 
@@ -102,7 +174,7 @@ function Decision({ item, track }) {
   </>
 }
 
-export default function RobotDetective({ game, track, onBack }) {
+export default function RobotDetective({ game, track, onBack, onActivity }) {
   const [step, setStep] = useState(0), [index, setIndex] = useState(0), [finished, setFinished] = useState(false)
   const [fresh, setFresh] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('')
   const predictions = game.training.results?.predictions || []
@@ -151,7 +223,7 @@ export default function RobotDetective({ game, track, onBack }) {
       </div>
       <footer className="detective-navigation"><button disabled={step === 0} onClick={() => goTo(step - 1)}>← Back</button><span>You can revisit every step.</span>{step < 2 ? <button className="green" onClick={() => goTo(step + 1)}>{step === 0 ? 'Next: follow the decision →' : 'Next: test the robot →'}</button> : <button className="green" disabled={finished} onClick={() => setFinished(true)}>{finished ? 'Case closed ✓' : 'Close the case'}</button>}</footer>
       {finished && <section className="detective-case-notes" role="status"><h3>Case closed. What did we discover?</h3><p>Your labels supplied examples. Training adjusted weights to learn patterns. Those patterns produced bin scores—but even a confident robot can make a mistake.</p><button onClick={() => goTo(0)}>Investigate again</button></section>}
-      <ExtraHelp title="Optional lab: experiment with weights" topic="weights" track={track}><WeightExperiment track={track} /></ExtraHelp>
+      <ExtraHelp title="Optional lab: experiment with weights" topic="weights" track={track}><WeightExperiment track={track} onActivity={onActivity} navigationKey={step} /></ExtraHelp>
     </>}
     <div className="detective-stage-back"><button onClick={onBack}>← Back: training</button></div>
   </section>

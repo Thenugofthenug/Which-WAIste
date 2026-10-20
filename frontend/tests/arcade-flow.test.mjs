@@ -26,6 +26,7 @@ async function render(Component, props = {}) {
   await React.act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Component, props))))
 }
 async function mount(Component, props = {}) {
+  if (Component === App) window.sessionStorage.setItem('waiste-player', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)

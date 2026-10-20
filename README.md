@@ -37,9 +37,11 @@ DataGrip connection, database tables, exports and free-trial limits.
 Use the combined branch **`integration/temp-data-collection`** for deployment.
 
 Browser records include sorting outcomes and timings, each training run,
-learning-rate slider choices, familiar/unfamiliar item tests and help topics
-opened. Browser sessions remain anonymous. The extra analytics tables are added
-at startup without replacing existing records.
+learning-rate choices, item tests, help topics, experiment plans, reviewed rounds
+and demonstration weight changes. New students enter first and last names on the
+start screen. Names live in a separate `players` table; `game_players` links each
+student ID to their rounds. Older anonymous records remain intact. The extra
+tables are added at startup without replacing existing records.
 
 Export the local browser data:
 
@@ -49,6 +51,31 @@ Export the local browser data:
 
 Set `DATABASE_URL` to export the hosted PostgreSQL data instead. Exports omit
 embedded images and model weights. There is no public export endpoint.
+Names are excluded by default. To include the separate name-to-ID table, export
+to a separate private folder with `--include-names`:
+
+```powershell
+.\.venv\Scripts\python.exe -m backend.stats_report --csv .data\named-stats --include-names
+```
+
+## Guided training and weights activities
+
+Screen two now gives students a goal: train, inspect a completed round, and test
+the robot. Click a graph point, use the round slider, or step backward/forward to
+highlight the same epoch on both graphs and in the round illustration. The graph
+values are real completed-epoch metrics. The illustration explains a whole
+practice pass; it does not invent live picture-by-picture progress.
+
+Help sits below the graphs. Students can optionally change one setting and
+compare two real runs; repeated training is not required to continue. The weights
+activity uses both columns for controls and a live decision diagram. Its goal is
+to raise Compost's score, then lower it. This small demonstration never changes
+the actual trained CNN.
+
+Student names are submitted only to `/api/players`; gameplay, browser session
+storage and activity events use IDs. **Different student** starts a fresh name
+entry on shared classroom computers. See the SQL join example in
+[the hosting guide](docs/RENDER.md) to connect names to study records.
 
 ## Retro arcade design and lesson flow
 
@@ -57,7 +84,7 @@ cyan, gold and coral accents, pixel headings, and the original waste artwork.
 The Press Start 2P font is bundled locally; its open font license is in
 `frontend/public/fonts/OFL-PressStart2P.txt`.
 
-The mission follows **Sort → Train → Explore**. Each stage explains the student's
+The mission follows **Sort → Train → Test**. Each stage explains the student's
 goal. Training has Back/Next controls, with the next step unlocking after a run
 finishes. The full network diagram is available under **Look deeper**; graphs,
 filters and extra help remain available. Solid/dashed graph lines and network
@@ -69,6 +96,25 @@ While sorting, **1 / 2 / 3** sends the next visible item to Recycling / Compost 
 Landfill. Tab + Enter selects a specific item; dragging still works. Number keys
 do not sort while a dialog is open, a control has focus, or progress is waiting
 to save. Speed arrows show Paused / Slow / Normal / Fast.
+
+## Consistent pixel-art items
+
+New missions use original 32-pixel inventory sprites with fixed colors per item,
+blocky outlines and small pose variations. The banana has a curved yellow shape
+and a folded peel. White newspaper, cup and glass pixels stay opaque on the belt.
+The same drawings supply the home gallery, sorting items and actual CNN examples.
+
+The source artwork is in `file_consolidation/pixel_items.py`. Regenerate the
+home gallery after changing those drawings:
+
+```powershell
+.\.venv\Scripts\python.exe -B frontend/scripts/export_home_items.py
+```
+
+Saved browser sessions retain their original renderer and trained model behavior.
+Choose **New mission** to see the inventory sprites in the sorting game. Earlier
+pixel-art sessions remain supported. The guided lab records new sessions as
+`lava-web-v4-guided-lab`; existing data needs no column migration.
 
 ## Browser conveyor update
 
@@ -84,14 +130,14 @@ recorded. Starting a new round enables the prompt again.
 Speed arrows still allow manual adjustment and pausing at 0 after the splash.
 The larger lava pool has persistent embers and a burst of sparks for each miss.
 
-## Robot Detective (Explore)
+## Robot Detective (Test)
 
-After training, **3 · Explore** guides students through three investigations:
+After training, **3 · Test** guides students through three investigations:
 robot eyes (pixels and actual filter maps), the decision (reveal bin scores and
 compare before/after training), and the test (try a new drawing or an unfamiliar
 item). Back/Next and the step buttons allow students to revisit each idea.
 The network diagram and demonstration weight sliders remain available as optional
-activities. Extra-help openings use the existing anonymous help-topic recording.
+activities. Extra-help openings use the existing help-topic recording by session ID.
 Predictions and filter maps still come from the trained CNN, and unfamiliar-item
 results explain when none of the robot's three bins is suitable.
 

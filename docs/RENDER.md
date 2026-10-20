@@ -21,8 +21,10 @@ connects that data collection to the browser game.
 
 `DATABASE_URL` is connected automatically using the database's internal URL.
 It is a backend secret; do not put it in a `VITE_` variable or commit it to Git.
-Tables are created on startup. Existing browser records are retained when the
-two new analytics tables are added.
+Tables are created on startup. Existing browser records are retained when new
+analytics tables are added. Student tracking adds `players`, `game_players`, and
+`activity_events`; it does not alter or overwrite existing game tables. Redeploying
+against the same `DATABASE_URL` keeps previous rounds, including anonymous rounds.
 
 Automatic deployments are off. For later updates, choose **Manual Deploy →
 Deploy latest commit** on this same branch after the tests pass.
@@ -33,22 +35,45 @@ The browser writes to these tables:
 
 | Table | What it records |
 | --- | --- |
-| `game_sessions` | Anonymous round ID, version, seed, completion and current model |
+| `game_sessions` | Opaque round ID, version, seed, completion and current model |
+| `players` | Student ID, first name, last name and registration time |
+| `game_players` | Links each named round to its student ID; one student can play multiple rounds |
 | `sort_actions` | Item, expected/chosen bins, correct/wrong/missed, speed, response time |
 | `training_runs` | Each training run, selected learning rate/epochs, history and results |
 | `lr_adjustments` | Learning-rate choices after the slider rests for 700 ms |
 | `try_clicks` | Familiar/unfamiliar tests, model run, prediction, confidence, destination and correctness |
 | `help_events` | Help topics opened, including Robot Detective explanations |
+| `activity_events` | Training goals, actual epochs reviewed and optional weight experiments |
 
 Items outside the three categories have `correct = NULL` in `try_clicks`, because
 none of the available bins is a valid answer. A high model score does not make
 that prediction correct. Missed conveyor items keep a NULL label and stay out of
 training.
 
-The hosted game uses anonymous round IDs. Nug's separate desktop version retains
-its player-name entry and its own local SQLite database; it does not automatically
-upload those desktop records or names to Render. A teacher-issued study-code flow
-would be a separate addition if survey matching is needed.
+The browser's start screen collects first and last names once for a student. Names
+are stored only in `players`, not copied into gameplay or learning-event rows.
+`POST /api/players` returns an opaque ID; the browser keeps that ID in this tab's
+session storage and keeps names out of URLs and browser storage. Subsequent rounds
+can link to the same student ID. A new registration always creates a new ID, even
+when two students share a name. The API has no public name-list or name-export
+route. Historical anonymous rounds still work and have no `game_players` link.
+
+Use the IDs to join collected actions to a student in DataGrip, for example:
+
+```sql
+SELECT p.id AS player_id, p.first_name, p.last_name,
+       a.session_id, a.item_name, a.outcome, a.correct, a.response_ms
+FROM players AS p
+JOIN game_players AS gp ON gp.player_id = p.id
+JOIN sort_actions AS a ON a.session_id = gp.session_id
+ORDER BY p.id, a.session_id, a."order";
+```
+
+The same `game_players.session_id` join works with `training_runs`, `help_events`,
+`lr_adjustments`, `try_clicks`, and `activity_events`. Keeping the name lookup
+separate lets researchers use IDs in their analysis without spreading names into
+every data file. Nug's desktop version still uses its own SQLite database; those
+desktop records are not automatically uploaded to Render.
 
 ### DataGrip and CSV exports
 
@@ -69,9 +94,18 @@ external PostgreSQL URL in your local terminal (include `sslmode=require`), then
 ```
 
 Without `DATABASE_URL`, this command reads the local browser SQLite database.
-Exports include readable bin names, a per-round score/label summary, and flattened
-training metrics. Embedded images and model weights are excluded. This report is
-a local command; there is no public data-export endpoint.
+Exports include readable bin names, a per-round score/label summary, flattened
+training metrics, the student-ID link table and learning activity events. Names,
+embedded images and model weights are excluded by default. Add `--include-names`
+only when you need a separate `players.csv` lookup:
+
+```powershell
+.\.venv\Scripts\python.exe -m backend.stats_report --csv .data\named-export --include-names
+```
+
+Use a separate export folder for named data; a later export without the flag does
+not remove an earlier `players.csv`. This report is a local command; there is no
+public data-export endpoint. Generated data exports remain under ignored `.data`.
 
 ## Free-trial limits
 
