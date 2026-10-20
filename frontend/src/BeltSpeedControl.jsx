@@ -15,23 +15,24 @@ function SpeedArrow({ up, disabled, onClick }) {
   return <g className="speed-arrow" role="button" tabIndex={0} aria-label={up ? 'Increase belt speed' : 'Decrease belt speed'} aria-disabled={disabled}
     onClick={activate} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate() } }}>
     <rect x="8" y={up ? -8 : 90} width="80" height={up ? 32 : 24} fill="transparent" />
-    <polygon points={TRIANGLE} transform={up ? 'translate(48 0) scale(.35)' : 'translate(48 108) scale(.35 -.35)'} fill="#00e436" stroke="rgb(194, 195, 199)" strokeWidth="3" />
+    <polygon points={TRIANGLE} transform={up ? 'translate(48 0) scale(.35)' : 'translate(48 108) scale(.35 -.35)'} fill="#75e5f5" stroke="#c2bbd6" strokeWidth="3" />
   </g>
 }
 
 export default function BeltSpeedControl({ value, onChange, disabled = false }) {
   return <g className="belt-speed-control" transform="translate(800 220)" role="group" aria-label="Belt speed control">
-    <g className="sorting-tv speed-control-tv" aria-hidden="true" fill="rgb(95, 87, 79)" stroke="rgb(194, 195, 199)" strokeWidth="4">
+    <g className="sorting-tv speed-control-tv" aria-hidden="true" fill="#575078" stroke="#c2bbd6" strokeWidth="4">
       <rect x="-34" y="-4" width="26" height="10" />
       <rect x="-34" y="122" width="26" height="10" />
-      <rect className="speed-tv-frame" x="-8" y="-16" width="112" height="168" fill="rgb(43, 43, 49)" strokeWidth="8" />
+      <rect className="speed-tv-frame" x="-8" y="-16" width="112" height="168" fill="#302c49" strokeWidth="8" />
     </g>
     <SpeedArrow up disabled={disabled || value === 3} onClick={() => onChange(Math.min(3, value + 1))} />
     <g role="img" aria-label={`Belt speed ${value} of 3`}>
-      <rect x="24" y="23" width="48" height="62" fill="#101412" stroke="rgb(194, 195, 199)" strokeWidth="3" />
-      <g transform="translate(34 29) scale(.35)">{Object.entries(SEGMENTS).map(([segment, points]) => <polygon key={segment} points={points} fill={DIGITS[value].includes(segment) ? '#00e436' : '#073418'} />)}</g>
+      <rect x="24" y="23" width="48" height="62" fill="#17162c" stroke="#c2bbd6" strokeWidth="3" />
+      <g transform="translate(34 29) scale(.35)">{Object.entries(SEGMENTS).map(([segment, points]) => <polygon key={segment} points={points} fill={DIGITS[value].includes(segment) ? '#75e5f5' : '#3b3551'} />)}</g>
     </g>
     <SpeedArrow disabled={disabled || value === 0} onClick={() => onChange(Math.max(0, value - 1))} />
-    <text x="48" y="136" textAnchor="middle" fill="#00e436" fontSize="13">BELT SPEED</text>
+    <text x="48" y="136" textAnchor="middle" fill="#75e5f5" fontSize="13">BELT SPEED</text>
+    <text x="48" y="164" textAnchor="middle" fill="#fff1d6" fontSize="14">{['PAUSED', 'SLOW', 'NORMAL', 'FAST'][value]}</text>
   </g>
 }

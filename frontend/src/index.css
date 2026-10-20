@@ -1,7 +1,15 @@
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('/fonts/PressStart2P-Regular.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 :root {
   font-family: 'Courier New', monospace;
-  color: #edf9ef;
-  background: #050807;
+  color: #fff1d6;
+  background: #141327;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -13,12 +21,15 @@
 
 body {
   margin: 0;
+  min-width: 320px;
+  background-image: linear-gradient(#b8abff08 1px, transparent 1px), linear-gradient(90deg, #b8abff08 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
 code {
   padding: 2px 5px;
-  border-radius: 4px;
-  background: #14261b;
+  border: 1px solid var(--line);
+  background: #17162c;
   font-size: 0.9em;
 }
 

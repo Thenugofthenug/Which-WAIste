@@ -50,6 +50,26 @@ Export the local browser data:
 Set `DATABASE_URL` to export the hosted PostgreSQL data instead. Exports omit
 embedded images and model weights. There is no public export endpoint.
 
+## Retro arcade design and lesson flow
+
+The `which-wAIste-retro` branch adds an indigo arcade theme with
+cyan, gold and coral accents, pixel headings, and the original waste artwork.
+The Press Start 2P font is bundled locally; its open font license is in
+`frontend/public/fonts/OFL-PressStart2P.txt`.
+
+The mission follows **Sort → Train → Explore**. Each stage explains the student's
+goal. Training has Back/Next controls, with the next step unlocking after a run
+finishes. The full network diagram is available under **Look deeper**; graphs,
+filters and extra help remain available. Solid/dashed graph lines and network
+connections distinguish information without relying only on color.
+
+**Main menu** pauses the mission and **Resume mission** returns to the same
+items, belt speed and learning screen. **New mission** starts a fresh round.
+While sorting, **1 / 2 / 3** sends the next visible item to Recycling / Compost /
+Landfill. Tab + Enter selects a specific item; dragging still works. Number keys
+do not sort while a dialog is open, a control has focus, or progress is waiting
+to save. Speed arrows show Paused / Slow / Normal / Fast.
+
 ## Browser conveyor update
 
 This branch keeps Jack's home screen and game layout, with an instruction splash

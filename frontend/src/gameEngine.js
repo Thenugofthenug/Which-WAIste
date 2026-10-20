@@ -1,5 +1,5 @@
 export const BINS = ['Recycling', 'Compost', 'Landfill']
-export const COLORS = ['#29adff', '#00e436', '#c2c3c7']
+export const COLORS = ['#75e5f5', '#b5e879', '#ffac85']
 export const SPEEDS = { SLOW: 2.2 / .03, NORMAL: 3.6 / .03, FAST: 5 / .03 }
 export const EXIT_Y = 486
 

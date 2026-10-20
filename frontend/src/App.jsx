@@ -60,6 +60,7 @@ function useRecorder(id, setGame, setFeedback) {
 
 export default function App() {
   const [game, setGame] = useState(null), [view, setView] = useState('sort')
+  const [showHome, setShowHome] = useState(false)
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [pollError, setPollError] = useState('')
   const [feedback, setFeedback] = useState(null), [guide, setGuide] = useState(false)
   const recorder = useRecorder(game?.id, setGame, setFeedback)
@@ -95,13 +96,12 @@ export default function App() {
     try {
       const value = await api('/sessions', {})
       window.sessionStorage.setItem('waiste-session', value.id)
-      setGame(value); setView('sort'); setFeedback(null); setGuide(false)
+      setGame(value); setView('sort'); setShowHome(false); setFeedback(null); setGuide(false)
     } catch (err) { setError(err.message) }
     finally { setBusy(false) }
   }
   function returnToStart() {
-    window.sessionStorage.removeItem('waiste-session')
-    setGame(null); setView('sort'); setFeedback(null); setGuide(false); setError(''); setPollError('')
+    setShowHome(true); setGuide(false)
   }
   function track(topic) {
     if (game) recorder.enqueue({ type: 'help', path: '/help', body: { event_id: crypto.randomUUID(), topic } })
@@ -116,22 +116,26 @@ export default function App() {
   }
   const complete = game?.summary.resolved === 30
   const nextStage = view === 'sort' && complete ? 'train' : view === 'train' && game?.training.status === 'done' ? 'explore' : null
-  return <main className="app-shell">
-    {!game ? <section className="title-screen" aria-labelledby="home-title"><HomeRobot /><h2 id="home-title">which w<span className="logo-ai">AI</span>ste?</h2><p className="home-tagline">SORT WASTE * TRAIN ROBOTS * EXPLORE LEARNING</p>
+  return <main className="app-shell" data-stage={game && !showHome ? view : 'home'}>
+    <header className="arcade-header"><div className="arcade-brand"><span className="brand-sprite" aria-hidden="true">▣</span><span>which w<span className="logo-ai">AI</span>ste<span className="brand-question">?</span></span></div><span className="arcade-edition">NEURAL NETWORK ARCADE</span></header>
+    {(!game || showHome) && <section className="title-screen pixel-panel" aria-labelledby="home-title"><HomeRobot /><p className="eyebrow home-eyebrow">PLAYER ONE · MEET YOUR ROBOT</p><h2 id="home-title">which w<span className="logo-ai">AI</span>ste?</h2><p className="home-tagline">A little sorting. A little science. A smarter robot?</p>
       <HomePictures />
-      <button className="green start-button" disabled={busy} onClick={newGame}>{busy ? 'Preparing your mission…' : 'START'}</button>
+      <ol className="mission-path" aria-label="Your mission"><li><span className="mission-number">01</span><div><strong>Sort it</strong><p>Your bin choices teach the robot.</p></div></li><li><span className="mission-number">02</span><div><strong>Train it</strong><p>Watch it learn from your examples.</p></div></li><li><span className="mission-number">03</span><div><strong>Test it</strong><p>Find out what it learned.</p></div></li></ol>
+      <div className="home-actions"><button className="green start-button" disabled={busy} onClick={game ? () => setShowHome(false) : newGame}>{busy ? 'Preparing your mission…' : game ? 'Resume mission' : 'START'}</button>{game && <button disabled={busy || recorder.pending > 0} onClick={newGame}>New mission</button>}</div>
+      <p className="home-prompt">{game ? 'Your current mission is waiting right where you left it.' : '30 items. 3 bins. You are the robot’s teacher.'}</p>
       <HomeBins />
-      </section> : <>
+      </section>}
+    {game && <div hidden={showHome} className="mission-screen">
       {recorder.error && <div className="error" role="alert">{recorder.error} <button onClick={recorder.retry}>Retry saving</button><p>The belt is paused. Keep this tab open while reconnecting.</p></div>}
       {pollError && <p role="status" className="education-note">{pollError}</p>}
-      <Conveyor key={game.id} game={game} active={view === 'sort'} paused={guide || view !== 'sort'} onResolve={resolve}
+      <Conveyor key={game.id} game={game} active={view === 'sort' && !showHome} paused={guide || showHome || view !== 'sort'} onResolve={resolve}
         feedback={feedback?.message || ''} feedbackKind={feedback?.kind || 'ready'} feedbackKey={feedback?.id || 'ready'}
         help={openGuide} onReturnToStart={returnToStart} saving={recorder.pending} saveError={recorder.error}
         onTrain={() => setView('train')} onResort={newGame} busy={busy}
         stageNavigation={<nav className="stage-nav" aria-label="Game stages">{[['sort', '1 · Sort'], ['train', '2 · Train'], ['explore', '3 · Explore']].map(([id, label]) =>
-          <button key={id} className={nextStage === id ? 'stage-ready' : undefined} aria-current={view === id ? 'step' : undefined} disabled={id === 'train' ? !complete : id === 'explore' ? game.training.status !== 'done' : false} onClick={() => setView(id)}>{label}</button>)}</nav>} />
-      {complete && <div hidden={view === 'sort'}><LearningLab key={game.id} game={game} setGame={setGame} view={view} saving={recorder.pending} track={track} onRateSettled={recordLearningRate} /></div>}
-    </>}
+          <button key={id} data-stage={id} className={nextStage === id ? 'stage-ready' : undefined} aria-current={view === id ? 'step' : undefined} disabled={id === 'train' ? !complete : id === 'explore' ? game.training.status !== 'done' : false} onClick={() => setView(id)}>{label}</button>)}</nav>} />
+      {complete && <div hidden={view === 'sort'}><LearningLab key={game.id} game={game} setGame={setGame} view={view} saving={recorder.pending} track={track} onRateSettled={recordLearningRate} onBack={() => setView(view === 'explore' ? 'train' : 'sort')} onNext={() => setView('explore')} /></div>}
+    </div>}
     {error && <p className="error" role="alert">{error}</p>}
     {guide && <HelpGuide close={closeGuide} track={track} />}
   </main>

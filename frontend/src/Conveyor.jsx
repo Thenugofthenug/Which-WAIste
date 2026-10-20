@@ -224,33 +224,48 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
     const actor = store.read().actors.find(item => item.index === selected && item.y >= -64)
     if (running && actor) resolve(actor, 'sorted', bin)
   }
+  useEffect(() => {
+    function shortcut(event) {
+      if (!running || event.repeat || event.ctrlKey || event.altKey || event.metaKey || !['1', '2', '3'].includes(event.key)) return
+      if (event.target !== document.body && !svg.current?.contains(event.target)) return
+      if (event.target.closest?.('button, input, select, textarea, [contenteditable]:not([contenteditable="false"]), [role="dialog"], .belt-speed-control')) return
+      const visible = store.read().actors.filter(item => item.y >= -64)
+      const actor = visible.find(item => item.index === selected) || visible[0]
+      if (!actor) return
+      event.preventDefault()
+      resolveRef.current(actor, 'sorted', Number(event.key) - 1)
+    }
+    document.addEventListener('keydown', shortcut)
+    return () => document.removeEventListener('keydown', shortcut)
+  }, [running, selected, store])
   const selectedItem = w.actors.find(item => item.index === selected)
   const empty = !w.actors.length
   return <section className={`game-board pixel-panel ${running ? 'moving' : ''} ${robotAwake ? 'robot-awake' : ''} ${robotIdle ? 'robot-idle' : ''}`} aria-label="Conveyor sorting game">
     <div inert={prompt ? true : undefined}><div className="board-controls">{stageNavigation}<div className="button-row">
       <button className="secondary" onClick={help} title="The belt pauses while you explore labels, filters, weights and fair testing.">? Learning tips</button>
-      <button onClick={onReturnToStart} disabled={saving > 0} title={saving > 0 ? 'Wait for progress to finish saving before returning to start.' : undefined}>Return to start</button>
+      <button onClick={onReturnToStart} disabled={saving > 0} title={saving > 0 ? 'Wait for progress to finish saving before opening the main menu.' : 'Your current mission will stay here.'}>Main menu</button>
     </div></div>
     <div hidden={!active}>
+    <div className="sorting-brief"><div><p className="eyebrow">Stage 01 · Sort it</p><h1>You are the robot’s teacher.</h1><p>Drag each item into a bin. Your choice becomes a label the robot learns from.</p></div><span className="mission-counter" role="status">{game.summary.resolved} / 30 <small>ITEMS</small></span></div>
     <svg ref={svg} className="conveyor-svg" viewBox={`-320 0 1920 ${sceneHeight}`} style={{ aspectRatio: `1920 / ${sceneHeight}` }} aria-label="Animated conveyor above a pixel lava pit and three sorting bins"
       onPointerMove={moveDrag} onPointerUp={release} onPointerCancel={() => { store.read().drag = null; store.publish() }}>
-      <defs><pattern id="floor" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#142a1d" /></pattern>
+      <defs><pattern id="floor" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#302b4b" /></pattern>
         <clipPath id="belt-clip"><rect x="530" y="0" width="220" height="470" /></clipPath></defs>
-      <rect x="-320" width="1920" height={sceneHeight} fill="#080e0a" /><rect x="-320" width="1920" height={sceneHeight} fill="url(#floor)" />
+      <rect x="-320" width="1920" height={sceneHeight} fill="#17162c" /><rect x="-320" width="1920" height={sceneHeight} fill="url(#floor)" />
       <BeltSpeedControl value={displayedSpeedLevel} onChange={changeSpeed} disabled={!!prompt || empty || !!saveError} />
       <g className="sorting-tv memory-tv" transform="translate(0 21)">
-        <g fill="rgb(95, 87, 79)" stroke="rgb(194, 195, 199)" strokeWidth="4">
+        <g fill="#575078" stroke="#c2bbd6" strokeWidth="4">
           <rect x="-320" y="125" width="80" height="14" />
           <rect x="-320" y="235" width="80" height="14" />
-          <rect x="-240" y="35" width="252" height="275" fill="rgb(43, 43, 49)" strokeWidth="8" />
+          <rect x="-240" y="35" width="252" height="275" fill="#302c49" strokeWidth="8" />
         </g>
         <MemoryTable records={memory} items={game.items} />
       </g>
       <g className="sorting-tv feedback-tv" transform="translate(0 386)">
-        <g fill="rgb(95, 87, 79)" stroke="rgb(194, 195, 199)" strokeWidth="4">
+        <g fill="#575078" stroke="#c2bbd6" strokeWidth="4">
           <rect x="-320" y="125" width="80" height="14" />
           <rect x="-320" y="235" width="80" height="14" />
-          <rect x="-240" y="35" width="252" height="275" fill="rgb(43, 43, 49)" strokeWidth="8" />
+          <rect x="-240" y="35" width="252" height="275" fill="#302c49" strokeWidth="8" />
         </g>
         <foreignObject x="-232" y="43" width="236" height="259">
           <div className={`feedback-tv-screen${complete ? ' sorting-complete' : ''}`}>
@@ -264,14 +279,15 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
         </foreignObject>
       </g>
       <g className="sorting-tv right-tv" aria-label="Right television">
-        <g fill="rgb(95, 87, 79)" stroke="rgb(194, 195, 199)" strokeWidth="4">
+        <g fill="#575078" stroke="#c2bbd6" strokeWidth="4">
           <rect x="1512" y="335" width="88" height="14" />
           <rect x="1512" y="445" width="88" height="14" />
-          <rect x="1260" y="245" width="252" height="275" fill="rgb(43, 43, 49)" strokeWidth="8" />
+          <rect x="1260" y="245" width="252" height="275" fill="#302c49" strokeWidth="8" />
         </g>
+        <foreignObject x="1268" y="253" width="236" height="259"><div className="mission-tv-screen"><p className="eyebrow">ROBOT TRAINING CO.</p><h2>GOOD LABELS.<br />BETTER EXAMPLES.</h2><span className="tv-pixel-heart" aria-hidden="true">♥</span><p>You choose a bin.<br />The robot learns a pattern.</p><small>Watch out for the lava!</small></div></foreignObject>
       </g>
-      <rect x="514" width="252" height="470" fill="#c2c3c7" stroke="#5f574f" strokeWidth="4" />
-      <rect x="530" width="220" height="470" fill="#2b2b31" />
+      <rect x="514" width="252" height="470" fill="#c2bbd6" stroke="#575078" strokeWidth="4" />
+      <rect x="530" width="220" height="470" fill="#302c49" />
       <g clipPath="url(#belt-clip)">{Array.from({ length: 18 }, (_, i) => <path key={i} d={`M534 ${i * 30 + w.treads - 30} H746`} stroke="#46464f" strokeWidth="3" />)}</g>
       {complete && <g clipPath="url(#belt-clip)" className={`belt-mission-actions${deliveryDone ? ' delivered' : ''}`}>
         <foreignObject x="542" y={w.deliveryY} width="196" height="180">
@@ -285,10 +301,10 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
       {Array.from({ length: 11 }, (_, i) => <path key={i} d={`M${510 + i * 24} 490 l12 -20 h12 l-12 20Z`} fill="#ffec27" />)}
       <g className="lava-pool" role="img" aria-label="Lava pool: missed items receive no training label">
         <rect className="lava-glow" x="460" y="486" width="360" height="100" fill="#ff6b00" opacity=".2" />
-        <rect x="470" y="490" width="340" height="90" fill="#5f574f" stroke="#c2c3c7" strokeWidth="5" />
+        <rect x="470" y="490" width="340" height="90" fill="#575078" stroke="#c2bbd6" strokeWidth="5" />
         {Array.from({ length: 80 }, (_, i) => <rect className="lava-tile" key={i} x={480 + i % 16 * 20} y={500 + Math.floor(i / 16) * 14}
           width="20" height="14" style={{ animationDelay: `${-(i % 5) * .2}s`, animationPlayState: active ? 'running' : 'paused' }} />)}
-        <text x="640" y="595" textAnchor="middle" fill="#ffcc80" fontSize="12">LAVA · LOST PRACTICE EXAMPLES</text>
+        <text x="640" y="595" textAnchor="middle" fill="#ffd66b" fontSize="12">LAVA · LOST PRACTICE EXAMPLES</text>
         {Array.from({ length: 7 }, (_, i) => <rect className="lava-ember" key={i} x={495 + i * 45} y={502 + i % 3 * 12} width="6" height="6" fill={i % 2 ? '#ffa300' : '#ffec27'}
           style={{ animationDelay: `${-i * .23}s`, animationPlayState: active ? 'running' : 'paused' }} />)}
       </g>
@@ -302,17 +318,17 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
       </g>}
       <g ref={robotMotion} className={robotPhase === 'settled' ? 'robot-settled' : robotPhase === 'settling' ? 'robot-settling' : !guidanceVisible ? 'robot-pacing' : undefined} style={{ '--robot-settle-from': settleFrom }}>
       <g className={started || complete ? 'robot-floating' : undefined}>
-      <svg x="196" y="80" width="128" height="128" viewBox="-4 -24 128 168" className="pixel-robot" role="img" aria-label="Re-cycler, new hire robot"><path d="M0 0h120v90H0zM20 90h80v50H20z" fill="#5f574f" stroke="#c2c3c7" strokeWidth="6" />
-        <rect className="robot-eye" x="20" y="24" width="22" height="22" fill="#00e436" /><rect className="robot-eye" x="78" y="24" width="22" height="22" fill="#00e436" />
-        <path d="M30 68h60M60 0v-20h16" stroke="#69f58e" strokeWidth="6" /></svg>
+      <svg x="196" y="80" width="128" height="128" viewBox="-4 -24 128 168" className="pixel-robot" role="img" aria-label="Re-cycler, new hire robot"><path d="M0 0h120v90H0zM20 90h80v50H20z" fill="#575078" stroke="#c2bbd6" strokeWidth="6" />
+        <rect className="robot-eye" x="20" y="24" width="22" height="22" fill="#75e5f5" /><rect className="robot-eye" x="78" y="24" width="22" height="22" fill="#75e5f5" />
+        <path d="M30 68h60M60 0v-20h16" stroke="#75e5f5" strokeWidth="6" /></svg>
       </g>
-      {(started || complete) && <g className="robot-hover-lines" stroke="rgb(0, 228, 54)" strokeWidth="5" aria-hidden="true">
+      {(started || complete) && <g className="robot-hover-lines" stroke="#75e5f5" strokeWidth="5" aria-hidden="true">
         {[80, 56, 32].map((width, index) => <line key={width} className="robot-hover-line" x1={260 - width / 2} x2={260 + width / 2} y1={220 + index * 14} y2={220 + index * 14} style={{ animationDelay: `${index * .2}s` }} />)}
       </g>}
       {robotIdle && <g className="robot-restart-prompt">
         <g role="img" aria-label="would you like to restart your sorting?">
-          <path d="M92 6H428V14H436V58H428V66H276V74H268V84H252V74H244V66H92V58H84V14H92Z" fill="#fff1e8" stroke="#c2c3c7" strokeWidth="4" strokeLinejoin="miter" />
-          <text x="260" y="31" textAnchor="middle" fill="#102117" fontSize="20"><tspan x="260">would you like to</tspan><tspan x="260" dy="25">restart your sorting?</tspan></text>
+          <path d="M92 6H428V14H436V58H428V66H276V74H268V84H252V74H244V66H92V58H84V14H92Z" fill="#fff1d6" stroke="#c2bbd6" strokeWidth="4" strokeLinejoin="miter" />
+          <text x="260" y="31" textAnchor="middle" fill="#211f3a" fontSize="20"><tspan x="260">would you like to</tspan><tspan x="260" dy="25">restart your sorting?</tspan></text>
         </g>
         <foreignObject className="robot-resort" x="170" y="272" width="180" height="54">
           <button disabled={busy || !!saving} onClick={onResort}>RESET BELT</button>
@@ -322,19 +338,19 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
       {complete && robotPhase === 'settled' && <RobotSummary summary={game.summary} saving={saving} />}
       {guidanceVisible && <g>
       {!robotIdle && <g>
-      <text x="260" y="267" textAnchor="middle" fill="#00e436" fontSize="21">RE-CYCLER, NEW HIRE</text>
-      <text x="260" y="300" textAnchor="middle" fill="#a3b9aa" fontSize="17"><tspan x="260">I brought in 30 items, </tspan><tspan x="260" dy="24">could you show me where </tspan><tspan x="260" dy="24">to put them?</tspan></text>
+      <text x="260" y="267" textAnchor="middle" fill="#75e5f5" fontSize="21">RE-CYCLER, NEW HIRE</text>
+      <text x="260" y="300" textAnchor="middle" fill="#c2bbd6" fontSize="17"><tspan x="260">I brought in 30 items, </tspan><tspan x="260" dy="24">could you show me where </tspan><tspan x="260" dy="24">to put them?</tspan></text>
       </g>}
-      {!running && !empty && <text className="belt-start-hint" x="848" y="185" textAnchor="middle" fill="#69f58e" fontSize="16">{paused || prompt ? 'LEARNING BREAK' : 'Set BELT SPEED above 0 to resume'}</text>}
+      {!running && !empty && <text className="belt-start-hint" x="848" y="185" textAnchor="middle" fill="#75e5f5" fontSize="16">{paused || prompt ? 'LEARNING BREAK' : 'Set BELT SPEED above 0 to resume'}</text>}
       </g>}
       {[280, 640, 1000].map((cx, i) => <g key={cx} className="sorting-bin" transform={`translate(0 ${binOffset})`} role="button" tabIndex={0} aria-label={`Sort selected item into ${BINS[i]}`}
         onClick={() => chooseBin(i)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); chooseBin(i) } }}>
         <rect x={cx - 142} y="556" width="300" height="200" fill="#000" />
-        <rect x={cx - 150} y="548" width="300" height="200" fill={COLORS[i]} stroke={binAt(w.drag?.x, w.drag?.y, binOffset) === i ? '#ffec27' : '#fff1e8'} strokeWidth="5" />
-        <rect x={cx - 132} y="564" width="264" height="126" fill="#0a1a10" stroke="#355e41" strokeWidth="4" />
+        <rect x={cx - 150} y="548" width="300" height="200" fill={COLORS[i]} stroke={binAt(w.drag?.x, w.drag?.y, binOffset) === i ? '#ffec27' : '#fff1d6'} strokeWidth="5" />
+        <rect x={cx - 132} y="564" width="264" height="126" fill="#211f3a" stroke="#625b8e" strokeWidth="4" />
         {binPulses[i] > 0 && <BinLogo key={binPulses[i]} bin={i} x={cx} />}
-        <text className="bin-item-count" x={cx} y="680" textAnchor="middle" fill="#fff1e8" fontSize="20">ITEMS: {binCounts[i]}</text>
-        <text x={cx} y="723" textAnchor="middle" fill="#000" fontSize="22">{BINS[i].toUpperCase()}</text></g>)}
+        <text className="bin-item-count" x={cx} y="680" textAnchor="middle" fill="#fff1d6" fontSize="20">ITEMS: {binCounts[i]}</text>
+        <text x={cx} y="723" textAnchor="middle" fill="#141327" fontSize="22">{i + 1} · {BINS[i].toUpperCase()}</text></g>)}
       {w.actors.filter(actor => actor.y > -128).map(actor => {
         const drag = w.drag?.index === actor.index ? w.drag : null
         return <g key={actor.index} transform={`translate(${(drag?.x ?? 640) - 64}, ${(drag?.y ?? actor.y) - 64})`} role="button" tabIndex={0}
@@ -342,15 +358,15 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
           onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelected(actor.index) } }}>
           {selected === actor.index && <rect x="-4" y="-4" width="136" height="136" fill="none" stroke="#ffec27" strokeWidth="4" />}
           <image href={actor.image} width="128" height="128" draggable="false" />
-          <text x="64" y="148" fill="#fff1e8" textAnchor="middle" fontSize="18">{actor.name}</text></g>
+          <text x="64" y="148" fill="#fff1d6" textAnchor="middle" fontSize="18">{actor.name}</text></g>
       })}
       {w.burnt.map(actor => { const progress = actor.age / BURN_SECONDS, size = 128 * (1 - progress)
         return <g key={actor.index} aria-label="Missed item destroyed in lava"><image href={actor.image} x={640 - size / 2} y={520 - size / 2 + progress * 16} width={size} height={size} />
           {Array.from({ length: 14 }, (_, i) => <rect className="lava-spark" key={i} x={640 + (i - 6.5) * (progress * 20 + 2)} y={535 - progress * 110 + i % 3 * 10 + progress * progress * 45}
             width={i % 3 ? '8' : '11'} height={i % 3 ? '8' : '11'} opacity={1 - progress} fill={i % 2 ? '#ffa300' : '#ffec27'} />)}</g> })}
     </svg>
-    <div ref={keyboardControls} className="keyboard-controls"><span>{selectedItem ? `Selected: ${selectedItem.name}` : 'Keyboard: Tab to an item, press Enter, then choose its bin.'}</span>
-      <div className="button-row">{BINS.map((bin, i) => <button key={bin} disabled={!running || !selectedItem} onClick={() => chooseBin(i)}>{bin}</button>)}</div></div>
+    <div ref={keyboardControls} className="keyboard-controls"><span>{selectedItem ? `Selected: ${selectedItem.name}` : 'Drag to a bin, or press 1 / 2 / 3 for the next item. Tab + Enter selects an item.'}</span>
+      <div className="button-row">{BINS.map((bin, i) => <button key={bin} data-key={i + 1} disabled={!running || !selectedItem} onClick={() => chooseBin(i)}>{bin}</button>)}</div></div>
     </div>
     </div>
     {active && prompt && <ConveyorPrompt slowdown={prompt === 'slowdown'} onContinue={continueSorting} />}

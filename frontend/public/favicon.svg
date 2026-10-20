@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <title>Which wAIst</title>
-  <rect width="64" height="64" rx="15" fill="#5145cd"/>
-  <path d="M10 19l9 27h7l6-17 6 17h7l9-27h-8l-5 18-6-18h-6l-6 18-5-18z" fill="#fff"/>
-  <circle cx="52" cy="12" r="5" fill="#6ee7d1"/>
+  <title>Which wAIste</title>
+  <path d="M8 0H56V8H64V56H56V64H8V56H0V8H8Z" fill="#211f3a"/>
+  <path d="M12 16H52V44H44V52H20V44H12Z" fill="#575078" stroke="#c2bbd6" stroke-width="4"/>
+  <path d="M20 24H28V32H20ZM36 24H44V32H36Z" fill="#75e5f5"/>
+  <path d="M24 38H40M32 14V6H40" fill="none" stroke="#ffd66b" stroke-width="4"/>
 </svg>

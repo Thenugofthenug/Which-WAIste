@@ -3,9 +3,9 @@ import recycling from './assets/bins/recycling.png'
 import compost from './assets/bins/compost.png'
 
 const bins = [
-  { name: 'Recycling', image: recycling, color: '#8dd8ff', symbol: 'recycling arrows' },
-  { name: 'Compost', image: compost, color: '#69f58e', symbol: 'leaf' },
-  { name: 'Landfill', image: landfill, color: '#c2c3c7', symbol: 'trash can' },
+  { name: 'Recycling', image: recycling, color: '#75e5f5', symbol: 'recycling arrows' },
+  { name: 'Compost', image: compost, color: '#b5e879', symbol: 'leaf' },
+  { name: 'Landfill', image: landfill, color: '#ffac85', symbol: 'trash can' },
 ]
 
 export default function HomeBins() {

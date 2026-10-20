@@ -24,21 +24,22 @@ function ExtraHelp({ title, topic, track, children }) {
 export function Network({ viz }) {
   if (!viz) return <p className="muted">Train the CNN to see real filter responses and connections here.</p>
   const point = (layer, node) => [65 + layer * 162, 72 + node * 30 + (6 - viz.layers[layer].labels.length) * 15]
-  return <figure className="network-figure"><svg viewBox="0 0 1040 290" role="img" aria-label="CNN responses from RGB through four convolution blocks to class scores">
+  return <figure className="network-figure"><svg viewBox="0 0 1040 290" role="img" aria-label="CNN responses from RGB through four convolution blocks to class scores. Cyan solid lines summarize positive weights; coral dashed lines summarize negative weights.">
     {viz.edges.map((matrix, layer) => {
       const max = Math.max(...matrix.flat().map(Math.abs), .000001)
       return matrix.flatMap((row, source) => row.map((weight, dest) => {
         const [x1, y1] = point(layer, source), [x2, y2] = point(layer + 1, dest)
         return <line key={`${layer}-${source}-${dest}`} x1={x1 + 26} y1={y1} x2={x2 - 26} y2={y2}
-          stroke={weight >= 0 ? '#00e436' : '#ff004d'} opacity={.08 + .65 * Math.abs(weight) / max * viz.layers[layer].level[source]} />
+          stroke={weight >= 0 ? '#75e5f5' : '#ff8d8d'} strokeDasharray={weight < 0 ? '5 4' : undefined} opacity={.08 + .65 * Math.abs(weight) / max * viz.layers[layer].level[source]} />
       }))
     })}
-    {viz.layers.map((layer, i) => <g key={i}><text x={65 + i * 162} y="25" textAnchor="middle" fill="#ffec27" fontSize="14">{i === 0 ? 'RGB INPUT' : i === 5 ? 'SOFTMAX' : `BLOCK ${i}`}</text>
+    {viz.layers.map((layer, i) => <g key={i}><text x={65 + i * 162} y="25" textAnchor="middle" fill="#ffd66b" fontSize="14">{i === 0 ? 'RGB INPUT' : i === 5 ? 'SOFTMAX' : `BLOCK ${i}`}</text>
       {layer.labels.map((label, j) => { const [x, y] = point(i, j)
-        return <g key={label}><rect x={x - 26} y={y - 12} width="52" height="24" fill={i === 5 ? COLORS[j] : '#008751'}
-          fillOpacity={.2 + .8 * layer.level[j]} stroke="#c2c3c7" strokeWidth="2" /><text x={x} y={y + 4} fill="#fff1e8" textAnchor="middle" fontSize="11">{i === 5 ? percent(layer.raw[j]) : label}</text>
+        return <g key={label}><rect x={x - 26} y={y - 12} width="52" height="24" fill={i === 5 ? '#211f3a' : '#40859a'}
+          fillOpacity={i === 5 ? 1 : .2 + .8 * layer.level[j]} stroke={i === 5 ? COLORS[j] : '#c2bbd6'} strokeWidth="2" /><text x={x} y={y + 4} fill="#fff1d6" textAnchor="middle" fontSize="11">{i === 5 ? percent(layer.raw[j]) : label}</text>
           {i === 5 && <text x={x + 36} y={y + 4} fill={COLORS[j]} fontSize="13">{label}</text>}</g>
       })}</g>)}
+    <g fontSize="12"><line x1="64" y1="267" x2="98" y2="267" stroke="#75e5f5" strokeWidth="2" /><text x="108" y="271" fill="#75e5f5">+ Positive weight</text><line x1="298" y1="267" x2="332" y2="267" stroke="#ff8d8d" strokeWidth="2" strokeDasharray="5 4" /><text x="342" y="271" fill="#ff8d8d">− Negative weight</text></g>
   </svg><figcaption>Real responses on the original image. Top channels only. Lines summarize kernel weights and batch normalization; they do not explain the entire decision.</figcaption></figure>
 }
 
@@ -96,12 +97,12 @@ function Decision({ item, track }) {
       <button aria-pressed={compare} onClick={() => setCompare(value => !value)}>{compare ? 'Show after only' : 'Compare before & after'}</button>
       {compare && <p className="muted">Same test item and views in both checks. Training can change scores without changing the winning bin.</p>}
     </>}
-    <ExtraHelp title="Open the real CNN diagram" topic="weights" track={track}><Network viz={item.viz} /><p>Green lines summarize positive weights; red lines summarize negative weights. Training adjusts many weights, changing how responses contribute to the next layer.</p></ExtraHelp>
+    <ExtraHelp title="Open the real CNN diagram" topic="weights" track={track}><Network viz={item.viz} /><p>Cyan solid lines (+) summarize positive weights; coral dashed lines (−) summarize negative weights. Training adjusts many weights, changing how responses contribute to the next layer.</p></ExtraHelp>
     <ExtraHelp title="How are these scores calculated?" topic="confidence" track={track}><p>Softmax turns the final three values into scores adding up to 100%. The highest score chooses a bin, but it is not a promise that the answer is right. The before/after scores average the same image and augmented views. The diagram shows the original image.</p></ExtraHelp>
   </>
 }
 
-export default function RobotDetective({ game, track }) {
+export default function RobotDetective({ game, track, onBack }) {
   const [step, setStep] = useState(0), [index, setIndex] = useState(0), [finished, setFinished] = useState(false)
   const [fresh, setFresh] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('')
   const predictions = game.training.results?.predictions || []
@@ -117,8 +118,8 @@ export default function RobotDetective({ game, track }) {
   }
   function goTo(next) { setStep(next); setFinished(false) }
 
-  return <section className="pixel-panel lab-panel detective-panel" aria-label="Explore">
-    <header className="section-heading detective-heading"><div><p className="eyebrow">Phase 3 · Your robot, under investigation</p><h2>Robot Detective</h2><p>You taught the robot. Find out how it chooses a bin, and whether you can trust it.</p></div><HomeRobot variant="heading" /></header>
+  return <section className="pixel-panel lab-panel detective-panel" data-step={step} aria-label="Explore">
+    <header className="section-heading detective-heading"><div><p className="eyebrow">Step 03 / Test</p><h2>Test your robot</h2><p>Become a Robot Detective. Find out how it chooses a bin, and whether you can trust it.</p></div><HomeRobot variant="heading" /></header>
     {!item ? <p>Complete training to investigate the robot's predictions.</p> : <>
       <nav className="detective-steps" aria-label="Investigation steps">{STEPS.map((lesson, i) => <button key={lesson.name} aria-current={step === i ? 'step' : undefined} onClick={() => goTo(i)}><span>{i + 1}</span>{lesson.name}</button>)}</nav>
       <div className="detective-task"><p className="eyebrow" role="status">Step {step + 1} of 3</p><h3 id="detective-task-title">{lesson.title}</h3><p>{lesson.action}</p></div>
@@ -152,5 +153,6 @@ export default function RobotDetective({ game, track }) {
       {finished && <section className="detective-case-notes" role="status"><h3>Case closed. What did we discover?</h3><p>Your labels supplied examples. Training adjusted weights to learn patterns. Those patterns produced bin scores—but even a confident robot can make a mistake.</p><button onClick={() => goTo(0)}>Investigate again</button></section>}
       <ExtraHelp title="Optional lab: experiment with weights" topic="weights" track={track}><WeightExperiment track={track} /></ExtraHelp>
     </>}
+    <div className="detective-stage-back"><button onClick={onBack}>← Back: training</button></div>
   </section>
 }

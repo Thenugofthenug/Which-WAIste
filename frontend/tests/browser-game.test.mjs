@@ -15,11 +15,12 @@ globalThis.requestAnimationFrame = callback => { frames.set(++frameId, callback)
 globalThis.cancelAnimationFrame = id => frames.delete(id)
 const React = await import('react')
 const { createRoot } = await import('react-dom/client')
-const server = await createServer({ root: fileURLToPath(new URL('../', import.meta.url)), server: { middlewareMode: true }, appType: 'custom' })
+const server = await createServer({ root: fileURLToPath(new URL('../', import.meta.url)), server: { middlewareMode: true, hmr: false }, appType: 'custom' })
 const { default: App } = await server.ssrLoadModule('/src/App.jsx')
 const { default: Conveyor } = await server.ssrLoadModule('/src/Conveyor.jsx')
 const { default: HomePictures } = await server.ssrLoadModule('/src/HomePictures.jsx')
 const { default: RobotDetective } = await server.ssrLoadModule('/src/RobotDetective.jsx')
+const { default: LearningLab } = await server.ssrLoadModule('/src/LearningLab.jsx')
 const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII='
 const game = { id: '11111111-1111-4111-8111-111111111111', items: Array.from({ length: 30 }, (_, index) => ({ index, name: 'Item ' + index, image })),
   actions: [], summary: { resolved: 0, correct: 0, wrong: 0, missed: 0, score: 0, streak: 0, best_streak: 0 }, training: { status: 'ready', history: [] } }
@@ -60,7 +61,7 @@ afterEach(async () => {
 })
 after(async () => { await server.close(); dom.window.close() })
 
-test('start pictures shuffle in place every 750ms and cover every sorting item without duplicates', async context => {
+test('start pictures shuffle in place every 3500ms and cover every sorting item without duplicates', async context => {
   context.mock.timers.enable({ apis: ['setInterval'] })
   Object.defineProperty(document, 'hidden', { configurable: true, value: false })
   try {
@@ -71,7 +72,7 @@ test('start pictures shuffle in place every 750ms and cover every sorting item w
     function checkBackgrounds() {
       for (const img of container.querySelectorAll('img')) {
         const color = img.style.backgroundColor
-        assert.ok(['rgb(16, 87, 16)', 'rgb(29, 94, 145)', 'rgb(60, 65, 66)'].includes(color))
+        assert.ok(['rgb(48, 48, 89)', 'rgb(41, 70, 83)', 'rgb(77, 53, 85)'].includes(color))
         assert.notEqual(color, lastBackground.get(img.alt))
         lastBackground.set(img.alt, color)
       }
@@ -81,7 +82,7 @@ test('start pictures shuffle in place every 750ms and cover every sorting item w
     assert.equal(first.length, 6)
     assert.deepEqual(captions(), first)
     assert.equal(container.querySelector('button'), null)
-    await React.act(async () => context.mock.timers.tick(749))
+    await React.act(async () => context.mock.timers.tick(3499))
     assert.deepEqual(names(), first)
     await React.act(async () => context.mock.timers.tick(1))
     assert.notDeepEqual(names(), first)
@@ -89,7 +90,7 @@ test('start pictures shuffle in place every 750ms and cover every sorting item w
     assert.equal(new Set([...first, ...names()]).size, 12)
     let previous = names()
     for (let i = 0; i < 10; i++) {
-      await React.act(async () => context.mock.timers.tick(750))
+      await React.act(async () => context.mock.timers.tick(3500))
       assert.equal(new Set(names()).size, 6)
       assert.deepEqual(captions(), names())
       checkBackgrounds()
@@ -98,7 +99,7 @@ test('start pictures shuffle in place every 750ms and cover every sorting item w
     }
     Object.defineProperty(document, 'hidden', { configurable: true, value: true })
     const hidden = names()
-    await React.act(async () => context.mock.timers.tick(1000))
+    await React.act(async () => context.mock.timers.tick(4000))
     assert.deepEqual(names(), hidden)
   } finally {
     delete document.hidden
@@ -242,7 +243,7 @@ test('SVG guidance disappears five seconds after starting while item and bin lab
   assert.ok(svg().querySelector('.lava-arrow'))
   await React.act(async () => context.mock.timers.tick(1))
   assert.equal(svg().querySelector('.lava-arrow'), null)
-  assert.deepEqual([...svg().querySelectorAll('text')].map(text => text.textContent), ['BELT SPEED', 'LAVA · LOST PRACTICE EXAMPLES', 'ITEMS: 0', 'RECYCLING', 'ITEMS: 0', 'COMPOST', 'ITEMS: 0', 'LANDFILL', 'Item 0'])
+  assert.deepEqual([...svg().querySelectorAll('text')].map(text => text.textContent), ['BELT SPEED', 'SLOW', 'LAVA · LOST PRACTICE EXAMPLES', 'ITEMS: 0', '1 · RECYCLING', 'ITEMS: 0', '2 · COMPOST', 'ITEMS: 0', '3 · LANDFILL', 'Item 0'])
   assert.ok(svg().querySelector('.pixel-robot'))
   assert.ok(svg().querySelector('.robot-floating'))
   assert.ok(svg().querySelector('.robot-pacing'))
@@ -250,7 +251,7 @@ test('SVG guidance disappears five seconds after starting while item and bin lab
   assert.equal(svg().querySelectorAll('.robot-foot').length, 0)
   const hoverLines = [...svg().querySelectorAll('.robot-hover-line')]
   assert.equal(hoverLines.length, 3)
-  assert.equal(svg().querySelector('.robot-hover-lines').getAttribute('stroke'), 'rgb(0, 228, 54)')
+  assert.equal(svg().querySelector('.robot-hover-lines').getAttribute('stroke'), '#75e5f5')
   assert.deepEqual(hoverLines.map(line => Number(line.getAttribute('x2')) - Number(line.getAttribute('x1'))), [80, 56, 32])
   await click(container.querySelector('[aria-label="Decrease belt speed"]'))
   assert.ok(container.querySelector('.robot-awake'))
@@ -466,17 +467,19 @@ test('help topics are saved and closing the guide resumes a moving game', async 
   assert.equal(new Set(calls.filter(([url]) => url.endsWith('/help')).map(([, body]) => body.event_id)).size, 2)
 })
 
-test('returning to start clears the active session and displays the landing screen', async () => {
+test('main menu preserves the active session and displays the landing screen', async () => {
   globalThis.fetch = async url => ({ ok: true, json: async () => url === '/api/sessions' ? structuredClone(game) : {} })
   await mount(App)
   assert.equal(container.querySelector('.home-robot-layer').getAttribute('aria-hidden'), 'true')
   await click(button('START'))
   assert.equal(container.querySelector('.home-robot-layer'), null)
   assert.equal(window.sessionStorage.getItem('waiste-session'), game.id)
-  await click(button('Return to start'))
-  assert.equal(window.sessionStorage.getItem('waiste-session'), null)
+  await click(button('Main menu'))
+  assert.equal(window.sessionStorage.getItem('waiste-session'), game.id)
   assert.ok(container.querySelector('#home-title'))
   assert.ok(container.querySelector('.home-robot-layer'))
+  assert.ok(container.querySelector('.mission-screen').hidden)
+  assert.ok(button('Resume mission'))
 })
 
 test('failed action saves pause the belt and retry sends the same pending event', async () => {
@@ -545,7 +548,8 @@ test('TV feedback names incorrect bins and uses each of the three correct respon
     assert.equal(container.querySelector('.tv-score strong').textContent, String(index * 10))
     assert.equal(container.querySelector('.tv-score').hidden, false)
     assert.equal(container.querySelector('.tv-score').getAttribute('aria-hidden'), null)
-    assert.equal(container.querySelectorAll('[role="status"]').length, 1)
+    assert.equal(container.querySelectorAll('.tv-feedback-region[role="status"]').length, 1)
+    assert.equal(container.querySelector('.mission-counter[role="status"]').textContent, `${index + 1} / 30 ITEMS`)
     assert.equal(container.querySelector('.feedback'), null)
   }
 })
@@ -579,7 +583,7 @@ test('stage navigation stays in board controls across sorting, training and expl
   assert.equal(navigation.querySelector('.stage-ready'), button('2 · Train'))
   await click(button('2 · Train'))
   const controls = container.querySelector('.training-controls')
-  assert.equal(controls.querySelector('button').textContent, 'RE-TRAIN')
+  assert.equal(controls.querySelector('button').textContent, 'Train again')
   assert.equal(controls.querySelector('.status'), null)
   assert.equal(/misses excluded|Split before augmentation|Train \d+ · Val \d+ · Test \d+|DONE/.test(controls.textContent), false)
   assert.equal(container.querySelector('.lab-panel .section-heading h2'), null)
@@ -592,7 +596,7 @@ test('stage navigation stays in board controls across sorting, training and expl
   ])
   for (const token of tokens.slice(1, -1)) assert.equal(token.querySelector('text').getAttribute('fill'), '#fff')
   const playerLabel = tokens[1].querySelector('[aria-label]')
-  assert.equal(playerLabel.querySelector('rect').getAttribute('fill'), '#c2c3c7', 'Uses chosen Landfill even though the guideline is Recycling')
+  assert.equal(playerLabel.querySelector('rect').getAttribute('fill'), '#ffac85', 'Uses chosen Landfill even though the guideline is Recycling')
   assert.ok(playerLabel.querySelector('.bin-symbol'))
   const lava = tokens[2]
   assert.equal(lava.querySelector('image'), null)
@@ -606,7 +610,7 @@ test('stage navigation stays in board controls across sorting, training and expl
   assert.equal(checks.length, 3, 'Only sorted items receive a checkmark')
   const tokenArrives = Number.parseFloat(tokens[1].querySelector('animateTransform').getAttribute('begin')) + Number(tokens[1].querySelector('animateTransform').getAttribute('keyTimes').split(';')[1]) * Number.parseFloat(tokens[1].querySelector('animateTransform').getAttribute('dur'))
   assert.ok(Math.abs(Number.parseFloat(checks[0].querySelector('animate').getAttribute('begin')) - tokenArrives) < .0001)
-  assert.equal(checks[0].getAttribute('fill'), '#00e436')
+  assert.equal(checks[0].getAttribute('fill'), '#ffd66b')
   const dataset = container.querySelector('.dataset-summary')
   assert.ok(dataset.textContent.includes('1 misses lost to lava'))
   assert.deepEqual([...dataset.querySelectorAll('dt')].map(text => text.textContent), ['TRAIN: 3', 'VALIDATE: 0', 'TEST: 0'])
@@ -621,7 +625,7 @@ test('stage navigation stays in board controls across sorting, training and expl
   assert.equal(button('2 · Train').getAttribute('aria-current'), 'step')
   assert.equal(navigation.querySelector('.stage-ready'), button('3 · Explore'))
   await click(button('3 · Explore'))
-  assert.equal(container.querySelector('.lab-panel .section-heading h2').textContent, 'Robot Detective')
+  assert.equal(container.querySelector('.lab-panel .section-heading h2').textContent, 'Test your robot')
   assert.ok(container.querySelector('.lab-panel .section-heading .heading-robot-layer'))
   assert.equal(navigation.closest('[hidden]'), null)
   assert.equal(button('3 · Explore').getAttribute('aria-current'), 'step')
@@ -655,11 +659,12 @@ test('START opens the conveyor instructions and only its start button moves the 
   await startOrIncrease()
   assert.equal(frames.size, 1)
   assert.equal(container.querySelector('.tv-score').hidden, true)
-  await click(button('Return to start'))
-  await click(button('START'))
-  assert.ok(container.querySelector('[role="dialog"]'))
-  assert.equal(container.querySelector('[aria-label="Increase belt speed"]').getAttribute('aria-disabled'), 'true')
+  await click(button('Main menu'))
   assert.equal(frames.size, 0)
+  await click(button('Resume mission'))
+  assert.equal(container.querySelector('[role="dialog"]'), null)
+  assert.equal(container.querySelector('[aria-label="Increase belt speed"]').getAttribute('aria-disabled'), 'false')
+  assert.equal(frames.size, 1, 'Resuming does not repeat the instructions or reset the belt')
 })
 
 test('three consecutive misses pause for learning help and resume at speed 1 without extra misses', async () => {
@@ -774,7 +779,7 @@ function detectiveGame() {
 test('Robot Detective presents one task at a time and preserves the image and views when going back', async () => {
   const completed = detectiveGame()
   await mount(RobotDetective, { game: completed })
-  assert.equal(container.querySelector('.detective-heading h2').textContent, 'Robot Detective')
+  assert.equal(container.querySelector('.detective-heading h2').textContent, 'Test your robot')
   assert.equal(container.querySelector('.detective-task [role="status"]').textContent, 'Step 1 of 3')
   assert.equal(button('← Back').disabled, true)
   assert.ok(container.querySelector('.filters-box'))
@@ -900,4 +905,48 @@ test('learning-rate analytics record settled choices once and flush when leaving
   await React.act(async () => context.mock.timers.tick(1000))
   assert.equal(rates.length, 2, 'Leaving training flushes the last choice without duplicating it')
   assert.equal(new Set(rates.map(event => event.event_id)).size, 2)
+})
+
+test('guided training starts with three rounds and unlocks the next step only after completion', async () => {
+  const requests = [], topics = []
+  let nextClicks = 0, backClicks = 0
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url, body: JSON.parse(init.body) })
+    return { ok: true, json: async () => ({}) }
+  }
+  const props = { game, view: 'train', setGame: () => {}, saving: false, track: topic => topics.push(topic),
+    onNext: () => nextClicks++, onBack: () => backClicks++ }
+  await mount(LearningLab, props)
+  assert.equal(container.querySelector('.lab-mission-intro h2').textContent, 'Teach your robot')
+  const next = () => button('Next: test your robot →')
+  assert.equal(next().disabled, true)
+  await click(next())
+  assert.equal(nextClicks, 0)
+  await click(button('Train your robot'))
+  assert.deepEqual(requests, [{ url: `/api/sessions/${game.id}/train`, body: { epochs: 3, learning_rate: .001 } }])
+
+  const running = { ...game, training: { ...game.training, status: 'running', epochs: 3 } }
+  await React.act(async () => root.render(React.createElement(LearningLab, { ...props, game: running })))
+  assert.equal(next().disabled, true)
+  assert.equal(button('Robot is learning…').disabled, true)
+
+  const completed = detectiveGame()
+  completed.training.results = { ...completed.training.results, before_accuracy: .3, test_accuracy: .7, best_epoch: 1 }
+  completed.training.history = [{ epoch: 1, train_loss: .8, val_loss: .9, train_acc: .7, val_acc: .6 }]
+  await React.act(async () => root.render(React.createElement(LearningLab, { ...props, game: completed })))
+  assert.equal(next().disabled, false)
+  await click(next())
+  assert.equal(nextClicks, 1)
+  await click(button('← Back: sorting'))
+  assert.equal(backClicks, 1)
+  assert.equal(container.querySelectorAll('.curve').length, 2)
+  for (const curve of container.querySelectorAll('.curve')) {
+    assert.equal(curve.querySelectorAll('polyline')[1].getAttribute('stroke-dasharray'), '8 5')
+    assert.match(curve.querySelector('svg').getAttribute('aria-label'), /cyan solid line.*gold dashed line/)
+  }
+  const deeper = container.querySelector('.training-deeper')
+  assert.equal(deeper.open, false, 'The full network is available without filling the initial training screen')
+  await React.act(async () => { deeper.open = true; await new Promise(resolve => setTimeout(resolve, 0)) })
+  assert.ok(deeper.querySelector('.network-figure'))
+  assert.deepEqual(topics, ['weights'])
 })

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import items from './assets/waste/catalog'
 
-const BACKGROUNDS = ['#105710', '#1d5e91', '#3c4142']
+const BACKGROUNDS = ['#303059', '#294653', '#4d3555']
 
 function nextPictures(previous = { pictures: [], backgrounds: {} }) {
   const pool = items.filter(item => !previous.pictures.some(picture => picture.name === item.name))
@@ -25,7 +25,7 @@ export default function HomePictures() {
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
     const timer = setInterval(() => {
       if (!document.hidden) setPictures(current => nextPictures(current))
-    }, 750)
+    }, 3500)
     return () => clearInterval(timer)
   }, [])
 
