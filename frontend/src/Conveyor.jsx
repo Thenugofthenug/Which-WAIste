@@ -12,10 +12,17 @@ const DELIVERY_STOP_Y = 145
 const MIN_SCENE_HEIGHT = 820
 const MISSES_BEFORE_SLOWDOWN = 3
 const BURN_SECONDS = .85
+const NO_PENDING_ACTIONS = []
 
-export default function Conveyor({ game, paused, onResolve, help, onReturnToStart, onTrain, onResort, busy = false, saving, saveError, stageNavigation, active = true, feedback = '', feedbackKind = 'ready', feedbackKey = 'ready' }) {
+function resolvedActions(saved, pending) {
+  const actions = new Map(saved.map(action => [action.index, action]))
+  for (const action of pending) if (!actions.has(action.index)) actions.set(action.index, action)
+  return [...actions.values()]
+}
+
+export default function Conveyor({ game, pendingActions = NO_PENDING_ACTIONS, paused, onResolve, help, onReturnToStart, onTrain, onResort, busy = false, saving, saveError, stageNavigation, active = true, feedback = '', feedbackKind = 'ready', feedbackKey = 'ready' }) {
   const [store] = useState(() => {
-    const world = createWorld(initialActors(game.items, game.actions))
+    const world = createWorld(initialActors(game.items, resolvedActions(game.actions, pendingActions)))
     world.read().deliveryY = -190
     world.publish()
     return world
@@ -36,9 +43,10 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
   const [pauseSettled, setPauseSettled] = useState(false)
   const [deliveryDone, setDeliveryDone] = useState(false)
   const [selected, setSelected] = useState(null)
-  const [binCounts, setBinCounts] = useState(() => BINS.map((_, bin) => game.actions.filter(action => action.outcome === 'sorted' && action.chosen_class === bin).length))
   const [binPulses, setBinPulses] = useState(() => BINS.map(() => 0))
-  const [memory, setMemory] = useState(() => [...game.actions])
+  const [localActions, setLocalActions] = useState([])
+  const memory = resolvedActions(game.actions, [...localActions, ...pendingActions])
+  const binCounts = BINS.map((_, bin) => memory.filter(action => action.outcome === 'sorted' && action.chosen_class === bin).length)
   const robotMotion = useRef()
   const [robotPhase, setRobotPhase] = useState('pacing')
   const [settleFrom, setSettleFrom] = useState('translateY(0)')
@@ -52,6 +60,19 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
   const feedbackVisible = started && feedbackKind !== 'ready'
   const beltPaused = started && speedLevel === 0 && !complete && active && !paused && !saveError
   const robotIdle = beltPaused && pauseSettled
+
+  useLayoutEffect(() => {
+    // A reload can replay saved-in-this-tab choices after the initial GET.
+    // Remove both pending and acknowledged items without replaying their action.
+    const incoming = resolvedActions(game.actions, pendingActions)
+    const resolved = new Set(incoming.map(action => action.index))
+    const world = store.read()
+    const remaining = world.actors.filter(actor => !resolved.has(actor.index))
+    let changed = remaining.length !== world.actors.length
+    if (changed) world.actors = remaining
+    if (world.drag && resolved.has(world.drag.index)) { world.drag = null; changed = true }
+    if (changed) store.publish()
+  }, [game.actions, pendingActions, store])
 
   const changeSpeed = useCallback(level => {
     if (!active || paused || saveError || prompt || complete || !store.read().actors.length) return
@@ -128,9 +149,8 @@ export default function Conveyor({ game, paused, onResolve, help, onReturnToStar
         setPrompt('slowdown')
       }
     } else consecutiveMisses.current = 0
-    setMemory(records => [...records, { index: actor.index, outcome, chosen_class: chosen }])
+    setLocalActions(records => [...records, { index: actor.index, outcome, chosen_class: chosen }])
     if (outcome === 'sorted') {
-      setBinCounts(counts => counts.map((count, bin) => count + (bin === chosen ? 1 : 0)))
       setBinPulses(pulses => pulses.map((pulse, bin) => pulse + (bin === chosen ? 1 : 0)))
     }
     if (selected === actor.index) setSelected(null)

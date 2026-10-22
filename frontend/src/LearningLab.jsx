@@ -70,7 +70,8 @@ export default function LearningLab({ game, setGame, view, saving, track, onRate
       pendingRate.current = null
     }
   }
-  function changeRate(exponent) {
+  function changeRate(exponent, fromStudent = true) {
+    if (fromStudent && goal === 'more_practice') setGoal(null)
     setRate(exponent)
     pendingRate.current = exponent
     clearTimeout(rateTimer.current)
@@ -84,21 +85,52 @@ export default function LearningLab({ game, setGame, view, saving, track, onRate
     if (reviewEpoch !== epoch) onActivity?.({ kind: 'epoch_review', epoch })
   }
   function chooseGoal(next) {
+    if (goal === next) { setGoal(null); return }
     setGoal(next)
     setMode(runSettings.mode)
-    if (next === 'more_practice' && runSettings.rate !== null) changeRate(runSettings.rate)
+    if (next === 'more_practice' && runSettings.rate !== null) changeRate(runSettings.rate, false)
     if (next === 'step_size') setEpochs(runSettings.epochs)
     if (goal !== next) onActivity?.({ kind: 'training_plan', goal: next })
+  }
+  function changeEpochs(value) {
+    if (goal === 'step_size') setGoal(null)
+    setEpochs(value)
+  }
+  function changeMode(value) {
+    setGoal(null)
+    setMode(value)
+  }
+  function acceptTraining(recovered = null) {
+    if (results) setBaseline({ results, settings: runSettings })
+    setRunSettings({ epochs, rate, mode }); setReviewEpoch(null)
+    setGame(current => current?.id !== game.id ? current : ({ ...current, training: recovered || {
+      ...current.training, status: 'running', history: [], results: null, probe: null, error: null,
+      run_id: null, epochs, learning_rate: 10 ** rate, training_mode: mode,
+      augmentations_per_item: mode === 'classroom' ? CLASSROOM_VARIATIONS : 8,
+    } }))
   }
   async function train() {
     flushRate()
     setError(''); setBusy(true)
     try {
       await api(`/sessions/${game.id}/train`, { epochs, learning_rate: 10 ** rate, training_mode: mode })
-      if (results) setBaseline({ results, settings: runSettings })
-      setRunSettings({ epochs, rate, mode }); setReviewEpoch(null)
-      setGame(current => ({ ...current, training: { ...current.training, status: 'running', history: [], results: null, probe: null, error: null, epochs, learning_rate: 10 ** rate, training_mode: mode, augmentations_per_item: mode === 'classroom' ? CLASSROOM_VARIATIONS : 8 } }))
-    } catch (err) { setError(err.message) }
+      acceptTraining()
+    } catch (err) {
+      // A lost response does not mean the server rejected the run. Check once
+      // before offering another start; api() bounds both requests with a timeout.
+      if (!err.status || err.status === 409 || err.status >= 500) {
+        try {
+          const recovered = await api(`/sessions/${game.id}/training`)
+          const newRun = recovered.run_id && recovered.run_id !== training.run_id
+          const matchingSettings = recovered.epochs === epochs && Number(recovered.learning_rate) === 10 ** rate && recovered.training_mode === mode
+          if (newRun && matchingSettings && ['running', 'done'].includes(recovered.status)) {
+            acceptTraining(recovered)
+            return
+          }
+        } catch { /* Keep the original request error if recovery is unavailable. */ }
+      }
+      setError(err.message)
+    }
     finally { setBusy(false) }
   }
   if (view === 'explore') return <RobotDetective game={game} track={track} onActivity={onActivity} onBack={onBack} />
@@ -108,13 +140,13 @@ export default function LearningLab({ game, setGame, view, saving, track, onRate
     <DatasetSummary game={game} />
     <div className="training-grid">
       <section className="inset training-controls"><p className="eyebrow">1 / Set up a practice run</p><h3>Ready to practice?</h3><p>{results ? 'You can stop here, or change one setting and compare runs.' : 'Start with 3 rounds. Your robot learns from your labels, including mistakes.'}</p>
-        <label>Practice rounds <small>Scientific name: epochs</small><select value={epochs} disabled={busy || running || (!!results && goal === 'step_size')} onChange={e => setEpochs(Number(e.target.value))}><option value="3">3 rounds · quick run</option><option value="10">10 rounds</option><option value="50">50 rounds · full run</option></select></label>
-        <label>Learning step size: {(10 ** rate).toExponential(1)}<small>Scientific name: learning rate</small><input type="range" min="-4" max="-1" step=".1" value={rate} disabled={busy || running || (!!results && goal === 'more_practice')} onChange={e => changeRate(Number(e.target.value))} /></label>
-        <label>Practice style<select aria-label="Practice style" value={mode} disabled={busy || running || (!!results && !!goal)} onChange={e => setMode(e.target.value)}><option value="classroom">Classroom · quicker practice</option><option value="full">Full · more image variations</option></select></label>
+        <label>Practice rounds <small>Scientific name: epochs</small><select value={epochs} disabled={busy || running} onChange={e => changeEpochs(Number(e.target.value))}><option value="3">3 rounds · quick run</option><option value="10">10 rounds</option><option value="50">50 rounds · full run</option></select></label>
+        <label>Learning step size: {(10 ** rate).toExponential(1)}<small>Scientific name: learning rate</small><input type="range" min="-4" max="-1" step=".1" value={rate} disabled={busy || running} onChange={e => changeRate(Number(e.target.value))} /></label>
+        <label>Practice style<select aria-label="Practice style" value={mode} disabled={busy || running} onChange={e => changeMode(e.target.value)}><option value="classroom">Classroom · quicker practice</option><option value="full">Full · more image variations</option></select></label>
         <p className="training-mode-note">{mode === 'classroom' ? `Classroom uses ${CLASSROOM_VARIATIONS} image variations per training example each round.` : 'Full uses 8 image variations per training example each round.'} Both train the same robot. Fewer variations mean less practice, so accuracy can be lower.</p>
-        <button className="green training-button" disabled={saving || busy || running} onClick={train}>{running ? 'Robot is learning…' : results ? 'Train again' : 'Train your robot'}</button>
+        <button className="green training-button" disabled={saving || busy || running} onClick={train}>{running ? 'Robot is learning…' : busy ? 'Starting practice…' : results ? 'Train again' : 'Train your robot'}</button>
         <p className="status" role="status">{running ? `${history.length} / ${training.epochs} rounds complete${history.length ? '' : ' · preparing the first round'}` : results ? 'Practice complete! Inspect a round or go straight to testing.' : 'Ready when you are.'}</p>
-        {results && <div className="training-plan"><p className="eyebrow">Optional / Change one thing</p><p>Pick a question for a second run, or continue to testing.</p><div role="group" aria-label="Choose a training experiment"><button aria-pressed={goal === 'more_practice'} onClick={() => chooseGoal('more_practice')}>Do more rounds help?</button><button aria-pressed={goal === 'step_size'} onClick={() => chooseGoal('step_size')}>Does step size matter?</button></div><p className="muted">{goal === 'more_practice' ? 'Change the rounds above; keep step size the same. Then train again and compare.' : goal === 'step_size' ? 'Move the step-size slider; keep the rounds the same. Then train again and compare.' : 'Choose one setting to change. A higher score is not guaranteed.'}</p></div>}
+        {results && <div className="training-plan"><p className="eyebrow">Optional / Change one thing</p><p>Use a question to set up a comparison, or choose your own settings.</p><div role="group" aria-label="Choose a training experiment"><button disabled={busy || running} aria-pressed={goal === 'more_practice'} onClick={() => chooseGoal('more_practice')}>Do more rounds help?</button><button disabled={busy || running} aria-pressed={goal === 'step_size'} onClick={() => chooseGoal('step_size')}>Does step size matter?</button></div><p className="muted">{goal === 'more_practice' ? 'Try changing the rounds while keeping step size and practice style the same. All settings stay editable.' : goal === 'step_size' ? 'Try changing step size while keeping rounds and practice style the same. All settings stay editable.' : 'Change one thing for a fair comparison, or try your own settings. A higher score is not guaranteed.'}</p></div>}
       </section>
       <div className="training-evidence">
         <div className="training-evidence-heading"><div><p className="eyebrow">2 / Inspect a round</p><h3>What changed while it practiced?</h3></div><span className="training-live-status">{running && reviewEpoch === null ? 'LIVE · latest completed round' : selected ? `Reviewing round ${selected.epoch}` : 'Graphs appear after round 1'}</span></div>

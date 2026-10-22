@@ -168,6 +168,11 @@ results explain when none of the robot's three bins is suitable.
 
 ## Development checks
 
+See [classroom reliability checks](docs/FIELD_TESTING.md) for the four-student
+rotation load test, data-integrity checks, recovery behavior and remaining
+Render rehearsal. Screens 2 and 3 now have matching bottom navigation; optional
+comparison questions leave all practice settings editable until training starts.
+
 Install test and desktop dependencies once:
 
 ```powershell

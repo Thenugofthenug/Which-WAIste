@@ -146,6 +146,13 @@ but a simultaneous training request asks them to retry. The free web service has
 If Render reports memory exhaustion or training is too slow, upgrade the web
 service instead of adding workers, which would load extra CNN processes.
 
+CNN work uses a stable training thread and a separate prediction thread. At most
+four prediction requests are admitted at once; excess requests get a retry
+message instead of loading more models concurrently. Local tests with four
+students across 20 rotations passed, but do not reproduce Render's resource
+limits. See [classroom reliability checks](FIELD_TESTING.md) for reproducible
+tests and the four-device rehearsal before the field day.
+
 The application's database guard refuses to start in production without a
 `DATABASE_URL`; it cannot silently fall back to a temporary SQLite file. Local
 SQLite files would be lost on a Render redeploy.

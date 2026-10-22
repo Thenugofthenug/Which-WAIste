@@ -76,5 +76,7 @@ export default function useRecorder(id, setGame, setFeedback) {
     void pump(context)
   }, [context, persist, pump])
   const retry = useCallback(() => pump(context), [context, pump])
-  return { enqueue, pending: context?.queue.length || 0, error: context?.error || '', retry }
+  const pendingActions = context?.queue.filter(event => event.type === 'action')
+    .map(event => ({ index: event.index, ...event.body })) || []
+  return { enqueue, pending: context?.queue.length || 0, pendingActions, error: context?.error || '', retry }
 }

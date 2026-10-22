@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import Conveyor from './Conveyor'
 import HelpGuide from './HelpGuide'
@@ -8,6 +8,7 @@ import HomeBins from './HomeBins'
 import HomeRobot from './HomeRobot'
 import StudentEntry from './StudentEntry'
 import useRecorder from './useRecorder'
+import GameStages from './GameStages'
 import './App.css'
 
 export default function App() {
@@ -17,8 +18,23 @@ export default function App() {
   const [needsName, setNeedsName] = useState(false)
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [pollError, setPollError] = useState('')
   const [feedback, setFeedback] = useState(null), [guide, setGuide] = useState(false)
+  const topNavigation = useRef(null), bottomDestination = useRef(null)
   const recorder = useRecorder(game?.id, setGame, setFeedback)
   const closeGuide = useCallback(() => setGuide(false), [])
+  function changeStageFromBottom(next) {
+    if (next === view) return
+    bottomDestination.current = next
+    setView(next)
+  }
+  useEffect(() => {
+    const destination = bottomDestination.current
+    bottomDestination.current = null
+    if (destination !== view) return
+    // Wait for the new stage to render, then return to the shared navigation.
+    // Instant movement also respects reduced-motion preferences.
+    topNavigation.current?.scrollIntoView?.({ behavior: 'instant', block: 'start' })
+    topNavigation.current?.querySelector('[aria-current="step"]')?.focus({ preventScroll: true })
+  }, [view])
   useEffect(() => {
     const id = window.sessionStorage.getItem('waiste-session')
     if (!id) return
@@ -98,7 +114,6 @@ export default function App() {
       body: { outcome, chosen_class: chosen, response_ms: Math.min(3_600_000, Math.round(actor.responseMs)), speed } })
   }
   const complete = game?.summary.resolved === 30
-  const nextStage = view === 'sort' && complete ? 'train' : view === 'train' && game?.training.status === 'done' ? 'explore' : null
   return <main className="app-shell" data-stage={game && !showHome ? view : 'home'}>
     <header className="arcade-header"><div className="arcade-brand"><img className="brand-sprite" src="/favicon.svg?v=robot-3" width="32" height="32" alt="" aria-hidden="true" /><span>which w<span className="logo-ai">AI</span>ste<span className="brand-question">?</span></span></div><span className="arcade-edition">NEURAL NETWORK ARCADE</span></header>
     {(!game || showHome) && <section className="title-screen pixel-panel" aria-labelledby="home-title"><HomeRobot /><p className="eyebrow home-eyebrow">PLAYER ONE · MEET YOUR ROBOT</p><h2 id="home-title">which w<span className="logo-ai">AI</span>ste?</h2><p className="home-tagline">A little sorting. A little science. A smarter robot?</p>
@@ -114,11 +129,10 @@ export default function App() {
       {pollError && <p role="status" className="education-note">{pollError}</p>}
       <Conveyor key={game.id} game={game} active={view === 'sort' && !showHome} paused={guide || showHome || view !== 'sort'} onResolve={resolve}
         feedback={feedback?.message || ''} feedbackKind={feedback?.kind || 'ready'} feedbackKey={feedback?.id || 'ready'}
-        help={openGuide} onReturnToStart={returnToStart} saving={recorder.pending} saveError={recorder.error}
+        help={openGuide} onReturnToStart={returnToStart} saving={recorder.pending} saveError={recorder.error} pendingActions={recorder.pendingActions}
         onTrain={() => setView('train')} onResort={() => void newGame()} busy={busy}
-        stageNavigation={<nav className="stage-nav" aria-label="Game stages">{[['sort', '1 · Sort'], ['train', '2 · Train'], ['explore', '3 · Test']].map(([id, label]) =>
-          <button key={id} data-stage={id} className={nextStage === id ? 'stage-ready' : undefined} aria-current={view === id ? 'step' : undefined} disabled={id === 'train' ? !complete : id === 'explore' ? game.training.status !== 'done' : false} onClick={() => setView(id)}>{label}</button>)}</nav>} />
-      {complete && <div hidden={view === 'sort'}><LearningLab key={game.id} game={game} setGame={setGame} view={view} saving={recorder.pending} track={track} onRateSettled={recordLearningRate} onActivity={recordActivity} onBack={() => setView(view === 'explore' ? 'train' : 'sort')} onNext={() => setView('explore')} /></div>}
+        stageNavigation={<GameStages view={view} complete={complete} trainingStatus={game.training.status} onChange={setView} navigationRef={topNavigation} />} />
+      {complete && <div hidden={view === 'sort'}><LearningLab key={game.id} game={game} setGame={setGame} view={view} saving={recorder.pending} track={track} onRateSettled={recordLearningRate} onActivity={recordActivity} onBack={() => setView(view === 'explore' ? 'train' : 'sort')} onNext={() => setView('explore')} /><GameStages view={view} complete={complete} trainingStatus={game.training.status} onChange={changeStageFromBottom} bottom /></div>}
     </div>}
     {error && <p className="error" role="alert">{error}</p>}
     {guide && <HelpGuide close={closeGuide} track={track} />}

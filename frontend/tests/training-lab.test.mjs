@@ -138,8 +138,8 @@ test('optional one-setting rerun sends real settings and compares actual complet
   await change(container.querySelector('[aria-label="Practice style"]'), 'full')
   await click(button('Do more rounds help?'))
   assert.equal(container.querySelector('[aria-label="Practice style"]').value, 'classroom', 'An epoch comparison keeps the original variation count')
-  assert.equal(container.querySelector('[aria-label="Practice style"]').disabled, true)
-  assert.equal(container.querySelector('.training-controls input').disabled, true, 'Keep step size fixed')
+  assert.equal(container.querySelector('[aria-label="Practice style"]').disabled, false)
+  assert.equal(container.querySelector('.training-controls input').disabled, false, 'The question guides students without locking controls')
   await change(container.querySelector('.training-controls select'), '10')
   await click(button('Train again'))
   assert.deepEqual(requests, [[`/api/sessions/${first.id}/train`, { epochs: 10, learning_rate: .001, training_mode: 'classroom' }]])
@@ -155,6 +155,108 @@ test('optional one-setting rerun sends real settings and compares actual complet
   assert.ok([...comparison.querySelectorAll('small')].every(label => label.textContent === 'Classroom · 4 variations/image'))
   assert.deepEqual(activities, [{ kind: 'training_plan', goal: 'more_practice' }])
   assert.equal(button('Next: test your robot →').disabled, false, 'A lower score still allows learning to continue')
+})
+
+test('both comparison questions leave every setting editable and deselect when unrelated settings change', async () => {
+  const activities = [], rates = [], requests = []
+  const first = fixture('done', 3)
+  let finishRequest, optimistic
+  globalThis.fetch = (url, init) => {
+    requests.push(JSON.parse(init.body))
+    return new Promise(resolve => { finishRequest = resolve })
+  }
+  await render(first, { onActivity: event => activities.push(event), onRateSettled: value => rates.push(value),
+    setGame: update => { optimistic = update(first) } })
+  const controls = () => [...container.querySelectorAll('.training-controls select, .training-controls input')]
+  const rounds = () => container.querySelector('.training-controls select')
+  const style = () => container.querySelector('[aria-label="Practice style"]')
+  const step = () => container.querySelector('.training-controls input')
+  const editable = () => assert.ok(controls().every(control => !control.disabled))
+
+  await click(button('Do more rounds help?'))
+  editable()
+  await change(rounds(), '10')
+  assert.equal(button('Do more rounds help?').getAttribute('aria-pressed'), 'true')
+  await change(step(), '-2')
+  assert.equal(button('Do more rounds help?').getAttribute('aria-pressed'), 'false', 'Changing step size leaves the rounds-only comparison')
+  await click(button('Do more rounds help?'))
+  await change(style(), 'full')
+  assert.equal(button('Do more rounds help?').getAttribute('aria-pressed'), 'false')
+
+  await click(button('Does step size matter?'))
+  editable()
+  assert.equal(rounds().value, '3', 'The question presets the completed run’s rounds')
+  assert.equal(style().value, 'classroom')
+  await change(step(), '-2')
+  assert.equal(button('Does step size matter?').getAttribute('aria-pressed'), 'true')
+  await change(rounds(), '50')
+  assert.equal(button('Does step size matter?').getAttribute('aria-pressed'), 'false', 'Changing rounds leaves the step-only comparison')
+  await click(button('Does step size matter?'))
+  await change(style(), 'full')
+  assert.equal(button('Does step size matter?').getAttribute('aria-pressed'), 'false')
+  await change(rounds(), '10')
+  await change(step(), '-2')
+  editable()
+
+  await click(button('Train again'))
+  assert.ok(controls().every(control => control.disabled), 'Controls are disabled while the start request is pending')
+  assert.ok([...container.querySelectorAll('.training-plan button')].every(control => control.disabled))
+  assert.equal(button('Next: test your robot →').disabled, true)
+  await React.act(async () => finishRequest({ ok: true, json: async () => ({ status: 'running' }) }))
+  assert.deepEqual(requests, [{ epochs: 10, learning_rate: .01, training_mode: 'full' }])
+  assert.equal(rates.at(-1), -2)
+  assert.deepEqual(activities.map(event => event.goal), ['more_practice', 'more_practice', 'step_size', 'step_size'])
+  await render(optimistic)
+  assert.ok(controls().every(control => control.disabled), 'Controls stay disabled during actual training')
+})
+
+test('an accepted run with a lost response recovers its real progress instead of sending another train request', async () => {
+  const first = fixture('done', 3), requests = []
+  first.training.run_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const recovered = { ...fixture('running', 1).training, run_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }
+  let optimistic
+  globalThis.fetch = async (url, init) => {
+    requests.push([url, init?.method || 'GET'])
+    if (init?.method === 'POST') throw new TypeError('Response connection lost')
+    return { ok: true, json: async () => recovered }
+  }
+  await render(first, { setGame: update => { optimistic = update(first) } })
+  await click(button('Train again'))
+  assert.deepEqual(requests, [[`/api/sessions/${first.id}/train`, 'POST'], [`/api/sessions/${first.id}/training`, 'GET']])
+  assert.deepEqual(optimistic.training, recovered, 'Use actual returned history and run ID')
+  assert.equal(container.querySelector('[role="alert"]'), null)
+  await render(optimistic)
+  assert.equal(container.querySelector('.training-round-card').dataset.epoch, '1')
+  assert.equal(button('Next: test your robot →').disabled, true)
+  assert.ok([...container.querySelectorAll('.training-controls select, .training-controls input')].every(control => control.disabled))
+})
+
+test('409 recovery accepts a matching completed run, while validation failures and old results remain errors', async () => {
+  const first = fixture('done', 3)
+  first.training.run_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  let optimistic, getCount = 0
+  let status = 422, returned = first.training
+  globalThis.fetch = async (url, init) => {
+    if (init?.method === 'POST') return { ok: false, status, json: async () => ({ detail: status === 422 ? 'Need more labels' : 'Already training' }) }
+    getCount++
+    return { ok: true, json: async () => returned }
+  }
+  await render(first, { setGame: update => { optimistic = update(first) } })
+  await click(button('Train again'))
+  assert.match(container.querySelector('[role="alert"]').textContent, /Need more labels/)
+  assert.equal(getCount, 0, 'A genuine validation failure must not trigger recovery')
+  assert.equal(optimistic, undefined)
+  status = 409
+  await click(button('Train again'))
+  assert.match(container.querySelector('[role="alert"]').textContent, /Already training/)
+  assert.equal(optimistic, undefined, 'Never treat the previous completed run as the newly requested run')
+  returned = { ...fixture('done', 3).training, run_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }
+  await click(button('Train again'))
+  assert.deepEqual(optimistic.training, returned)
+  assert.equal(getCount, 2)
+  await render(optimistic)
+  assert.equal(button('Next: test your robot →').disabled, false)
+  assert.ok(container.querySelector('[aria-label="Compare completed runs"]'))
 })
 
 test('classroom is the new-run default and full practice submits its disclosed variation setting', async () => {
