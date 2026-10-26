@@ -1,0 +1,7 @@
+{
+  "host": "127.0.0.1",
+  "port": 5432,
+  "database": "waiste_local",
+  "user": "waiste_local_app",
+  "password": ""
+}

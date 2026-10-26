@@ -32,6 +32,10 @@ Node.js 22.12+ and Python 3.11+ are supported. The local database is
 
 ## Hosting and data collection
 
+For one laptop hosting four local browser players, see the
+[local classroom setup](docs/LOCAL_CLASSROOM.md). It provides an explicit SQLite
+practice mode and a local PostgreSQL launcher; both are independent of Render.
+
 See [the Render deployment guide](docs/RENDER.md) for the exact Blueprint steps,
 DataGrip connection, database tables, exports and free-trial limits.
 Use **`which-wAIste-retro`** for the current classroom deployment.

@@ -120,6 +120,9 @@ test('different student clears the old active identity and starts a separately l
 })
 
 test('lesson interactions are queued with the session and actual training run, without student names', async context => {
+  // A remote LAN HTTP origin has getRandomValues but not randomUUID.
+  const cryptoSource = globalThis.crypto
+  context.mock.getter(globalThis, 'crypto', () => ({ getRandomValues: bytes => cryptoSource.getRandomValues(bytes) }))
   context.mock.timers.enable({ apis: ['setTimeout'] })
   const runId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', calls = []
   const completed = { ...structuredClone(game),
@@ -158,5 +161,6 @@ test('lesson interactions are queued with the session and actual training run, w
   assert.equal(plan.kind, 'training_plan'); assert.equal(plan.goal, 'more_practice'); assert.equal(plan.training_run_id, undefined)
   assert.equal(experiment.kind, 'weight_experiment'); assert.equal(experiment.weight, 2); assert.equal(experiment.response, .8); assert.equal(experiment.training_run_id, runId)
   assert.equal(new Set(activities.map(call => call.body.event_id)).size, 3)
+  assert.ok(activities.every(call => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(call.body.event_id)))
   assert.ok(calls.every(call => !('first_name' in call.body) && !('last_name' in call.body)))
 })

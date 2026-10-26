@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api'
+import { newEventId } from './eventId'
 import Conveyor from './Conveyor'
 import HelpGuide from './HelpGuide'
 import LearningLab from './LearningLab'
@@ -95,18 +96,18 @@ export default function App() {
     setShowHome(true); setGuide(false)
   }
   function track(topic) {
-    if (game) recorder.enqueue({ type: 'help', path: '/help', body: { event_id: crypto.randomUUID(), topic } })
+    if (game) recorder.enqueue({ type: 'help', path: '/help', body: { event_id: newEventId(), topic } })
   }
   function openGuide() { track('labels'); setGuide(true) }
   function recordLearningRate(exponent) {
-    recorder.enqueue({ type: 'rate', path: '/learning-rate', body: { event_id: crypto.randomUUID(), exponent } })
+    recorder.enqueue({ type: 'rate', path: '/learning-rate', body: { event_id: newEventId(), exponent } })
   }
   const sessionId = game?.id, trainingRunId = game?.training.run_id, enqueue = recorder.enqueue
   const recordActivity = useCallback(event => {
     if (!sessionId) return
     const run = event.kind === 'training_plan' ? null : trainingRunId
     enqueue({ type: 'activity', path: '/activity', body: {
-      ...event, event_id: crypto.randomUUID(), ...(run ? { training_run_id: run } : {}),
+      ...event, event_id: newEventId(), ...(run ? { training_run_id: run } : {}),
     } })
   }, [sessionId, trainingRunId, enqueue])
   function resolve(actor, outcome, chosen, speed) {
