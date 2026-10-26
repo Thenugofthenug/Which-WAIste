@@ -45,6 +45,7 @@ async function click(text) {
   const button = [...container.querySelectorAll('button')].find(element => element.textContent === text)
   assert.ok(button, `Missing button: ${text}`)
   await React.act(async () => button.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
+  if (text === 'Start sorting at speed 2') await drive(30)
 }
 async function drive(count) {
   for (let i = 0; i < count && frames.size; i++) await React.act(async () => {

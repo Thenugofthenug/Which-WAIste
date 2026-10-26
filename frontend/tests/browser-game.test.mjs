@@ -41,9 +41,10 @@ function button(text) {
   assert.ok(found, `Button not found: ${text}`)
   return found
 }
-async function click(element, dismissInstructions = true) {
+async function click(element) {
+  const startsIntro = element.textContent === 'Start sorting at speed 2'
   await React.act(async () => element.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
-  if (dismissInstructions) await dismissActivityInstructions()
+  if (startsIntro) await drive(30)
 }
 // Keep existing slow-speed regression scenarios at their original timing.
 async function startOrIncrease() {
@@ -113,6 +114,24 @@ test('start pictures shuffle in place every 3500ms and cover every sorting item 
   } finally {
     delete document.hidden
   }
+})
+
+test('bin introduction highlights 1, 2 and 3 in order before the belt starts', async () => {
+  await mount(Conveyor, { game, onResolve() {}, help() {} })
+  await React.act(async () => button('Start sorting at speed 2').dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
+  const actors = () => [...container.querySelectorAll('[aria-label^="Select Item"]')].map(item => item.getAttribute('transform'))
+  const initial = actors()
+  for (let bin = 0; bin < 3; bin++) {
+    assert.equal(container.querySelector('.bin-intro-number').textContent, String(bin + 1))
+    assert.equal(container.querySelectorAll('.bin-intro-flash .bin-symbol').length, 1)
+    assert.equal(container.querySelector('.game-board').classList.contains('moving'), false)
+    await drive(10)
+    assert.deepEqual(actors(), initial)
+  }
+  assert.equal(container.querySelector('.bin-intro-number'), null)
+  assert.equal(container.querySelector('.game-board').classList.contains('moving'), true)
+  await drive(3)
+  assert.notDeepEqual(actors(), initial)
 })
 
 test('belt never stops for missed items; restoring excludes resolved items', () => {
@@ -303,7 +322,7 @@ test('completed sorting settles the robot before showing saved mission totals', 
   assert.ok(container.querySelector('.robot-floating'))
   const bubble = container.querySelector('.robot-summary')
   assert.ok(bubble)
-  for (const text of ['MISSION COMPLETE!', 'Score: 300', 'Right: 30', 'Missed: 0', 'Best streak: 30', 'Progress saved']) assert.ok(bubble.textContent.includes(text), text)
+  for (const text of ['MISSION COMPLETE!', 'Score: 300', 'Sorted Correctly: 30', 'Lost to Lava: 0', 'Best streak: 30', 'Progress saved']) assert.ok(bubble.textContent.includes(text), text)
   const summaryTexts = [...bubble.querySelectorAll('text')]
   assert.equal(summaryTexts.some(text => /\/30 complete|^Streak:|^Best:/.test(text.textContent)), false)
   for (const label of ['Score: 300', 'Best streak: 30']) {

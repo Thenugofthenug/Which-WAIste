@@ -35,6 +35,7 @@ export default function Conveyor({ game, pendingActions = NO_PENDING_ACTIONS, pa
   const [sceneHeight, setSceneHeight] = useState(MIN_SCENE_HEIGHT)
   const binOffset = sceneHeight - 770
   const [started, setStarted] = useState(false)
+  const [introBin, setIntroBin] = useState(null)
   const [showGuidance, setShowGuidance] = useState(true)
   const [speedLevel, setSpeedLevel] = useState(2)
   const [prompt, setPrompt] = useState(game.summary.resolved === 30 ? null : 'intro')
@@ -55,7 +56,7 @@ export default function Conveyor({ game, pendingActions = NO_PENDING_ACTIONS, pa
   const delivering = complete && !deliveryDone
   const displayedSpeedLevel = delivering ? Math.max(1, speedLevel) : speedLevel
   const speed = SPEED_LEVELS[Math.max(0, displayedSpeedLevel - 1)]
-  const running = active && (delivering || (!complete && speedLevel > 0)) && !paused && !saveError && !prompt
+  const running = active && (delivering || (!complete && speedLevel > 0)) && !paused && !saveError && !prompt && introBin === null
   const robotAwake = (started || complete) && active
   const feedbackVisible = started && feedbackKind !== 'ready'
   const beltPaused = started && speedLevel === 0 && !complete && active && !paused && !saveError
@@ -75,18 +76,36 @@ export default function Conveyor({ game, pendingActions = NO_PENDING_ACTIONS, pa
   }, [game.actions, pendingActions, store])
 
   const changeSpeed = useCallback(level => {
-    if (!active || paused || saveError || prompt || complete || !store.read().actors.length) return
+    if (!active || paused || saveError || prompt || introBin !== null || complete || !store.read().actors.length) return
     setPauseSettled(false)
     setSpeedLevel(Math.max(0, Math.min(3, level)))
     if (level > 0) setStarted(true)
-  }, [active, paused, saveError, prompt, complete, store])
+  }, [active, paused, saveError, prompt, introBin, complete, store])
 
   function continueSorting() {
     setPauseSettled(false)
     setSpeedLevel(prompt === 'slowdown' ? 1 : 2)
-    setStarted(true)
+    if (prompt === 'intro') setIntroBin(0)
+    else setStarted(true)
     setPrompt(null)
   }
+
+  useEffect(() => {
+    if (introBin === null || !active || paused || saveError) return
+    let frame, previous, elapsed = 0
+    function tick(now) {
+      if (previous !== undefined) elapsed += Math.min(now - previous, 100)
+      previous = now
+      if (elapsed >= 900) {
+        if (introBin === BINS.length - 1) {
+          setIntroBin(null)
+          setStarted(true)
+        } else setIntroBin(introBin + 1)
+      } else frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [introBin, active, paused, saveError])
 
   useEffect(() => {
     if (!beltPaused) return
@@ -281,7 +300,7 @@ export default function Conveyor({ game, pendingActions = NO_PENDING_ACTIONS, pa
       <defs><pattern id="floor" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#302b4b" /></pattern>
         <clipPath id="belt-clip"><rect x="530" y="0" width="220" height="470" /></clipPath></defs>
       <rect x="-320" width="1920" height={sceneHeight} fill="#17162c" /><rect x="-320" width="1920" height={sceneHeight} fill="url(#floor)" />
-      <BeltSpeedControl value={displayedSpeedLevel} onChange={changeSpeed} disabled={!!prompt || empty || !!saveError} />
+      <BeltSpeedControl value={displayedSpeedLevel} onChange={changeSpeed} disabled={!!prompt || introBin !== null || empty || !!saveError} />
       <g className="sorting-tv memory-tv" transform="translate(0 21)">
         <g fill="#575078" stroke="#c2bbd6" strokeWidth="4">
           <rect x="-320" y="125" width="80" height="14" />
@@ -313,7 +332,7 @@ export default function Conveyor({ game, pendingActions = NO_PENDING_ACTIONS, pa
           <rect x="1512" y="445" width="88" height="14" />
           <rect x="1260" y="245" width="252" height="275" fill="#302c49" strokeWidth="8" />
         </g>
-        <foreignObject x="1268" y="253" width="236" height="259"><div className="mission-tv-screen"><p className="eyebrow">ROBOT TRAINING CO.</p><h2>GOOD LABELS.<br />BETTER EXAMPLES.</h2><span className="tv-pixel-heart" aria-hidden="true">♥</span><p>You choose a bin.<br />The robot learns a pattern.</p><small>Watch out for the lava!</small></div></foreignObject>
+        <foreignObject x="1268" y="253" width="236" height="259"><div className="mission-tv-screen"><h2>WATCH OUT FOR THE LAVA</h2><p>you can't train the robot on what falls in</p><div className="items-remaining" role="status" aria-label={`${w.actors.length} items left to sort`}><strong>{w.actors.length}</strong><span>ITEMS LEFT</span></div></div></foreignObject>
       </g>
       <rect x="514" width="252" height="470" fill="#c2bbd6" stroke="#575078" strokeWidth="4" />
       <rect x="530" width="220" height="470" fill="#302c49" />
@@ -370,16 +389,16 @@ export default function Conveyor({ game, pendingActions = NO_PENDING_ACTIONS, pa
       <text x="260" y="267" textAnchor="middle" fill="#75e5f5" fontSize="21">RE-CYCLER, NEW HIRE</text>
       <text x="260" y="300" textAnchor="middle" fill="#c2bbd6" fontSize="17"><tspan x="260">I brought in 30 items, </tspan><tspan x="260" dy="24">could you show me where </tspan><tspan x="260" dy="24">to put them?</tspan></text>
       </g>}
-      {!running && !empty && <text className="belt-start-hint" x="848" y="185" textAnchor="middle" fill="#75e5f5" fontSize="16">{paused || prompt ? 'LEARNING BREAK' : 'Set BELT SPEED above 0 to resume'}</text>}
+      {!running && !empty && <text className="belt-start-hint" x="848" y="185" textAnchor="middle" fill="#75e5f5" fontSize="16">{introBin !== null ? `${introBin + 1} = ${BINS[introBin].toUpperCase()}` : paused || prompt ? 'LEARNING BREAK' : 'Set BELT SPEED above 0 to resume'}</text>}
       </g>}
       {[280, 640, 1000].map((cx, i) => <g key={cx} className="sorting-bin" transform={`translate(0 ${binOffset})`} role="button" tabIndex={-1} aria-label={`Sort next or selected item into ${BINS[i]}`}
         onClick={() => chooseBin(i)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); chooseBin(i) } }}>
         <rect x={cx - 142} y="556" width="300" height="200" fill="#000" />
         <rect x={cx - 150} y="548" width="300" height="200" fill={COLORS[i]} stroke={binAt(w.drag?.x, w.drag?.y, binOffset) === i ? '#ffec27' : '#fff1d6'} strokeWidth="5" />
         <rect x={cx - 132} y="564" width="264" height="126" fill="#211f3a" stroke="#625b8e" strokeWidth="4" />
-        {binPulses[i] > 0 && <BinLogo key={binPulses[i]} bin={i} x={cx} />}
+        {introBin === i ? <g className="bin-intro-flash"><BinLogo bin={i} x={cx} animate={false} /></g> : binPulses[i] > 0 && <BinLogo key={binPulses[i]} bin={i} x={cx} />}
         <text className="bin-item-count" x={cx} y="680" textAnchor="middle" fill="#fff1d6" fontSize="20">ITEMS: {binCounts[i]}</text>
-        <text x={cx} y="723" textAnchor="middle" fill="#141327" fontSize="22">{i + 1} · {BINS[i].toUpperCase()}</text></g>)}
+        <text x={cx} y="723" textAnchor="middle" fill="#141327" fontSize="22"><tspan className={introBin === i ? 'bin-intro-flash bin-intro-number' : undefined}>{i + 1}</tspan> · {BINS[i].toUpperCase()}</text></g>)}
       {w.actors.filter(actor => actor.y > -128).map(actor => {
         const drag = w.drag?.index === actor.index ? w.drag : null
         return <g key={actor.index} transform={`translate(${(drag?.x ?? 640) - 64}, ${(drag?.y ?? actor.y) - 64})`} role="button" tabIndex={-1}
@@ -394,7 +413,7 @@ export default function Conveyor({ game, pendingActions = NO_PENDING_ACTIONS, pa
           {Array.from({ length: 14 }, (_, i) => <rect className="lava-spark" key={i} x={640 + (i - 6.5) * (progress * 20 + 2)} y={535 - progress * 110 + i % 3 * 10 + progress * progress * 45}
             width={i % 3 ? '8' : '11'} height={i % 3 ? '8' : '11'} opacity={1 - progress} fill={i % 2 ? '#ffa300' : '#ffec27'} />)}</g> })}
     </svg>
-    <div ref={keyboardControls} className="keyboard-controls"><span>{selectedItem ? `Selected: ${selectedItem.name}` : 'Sort the next item with 1 / 2 / 3, or drag it into a bin.'}<br /><small role="status">↑ / ↓ belt speed · {displayedSpeedLevel} / 3 · speed 0 pauses</small></span>
+    <div ref={keyboardControls} className="keyboard-controls"><span>{introBin !== null ? <span role="status">Press {introBin + 1} for {BINS[introBin]}. Get ready to sort!</span> : selectedItem ? `Selected: ${selectedItem.name}` : 'Sort the next item with 1 / 2 / 3, or drag it into a bin.'}<br /><small role="status">↑ / ↓ belt speed · {displayedSpeedLevel} / 3 · speed 0 pauses</small></span>
       <div className="button-row">{BINS.map((bin, i) => <button key={bin} data-key={i + 1} aria-keyshortcuts={String(i + 1)} disabled={!running || !w.actors.some(item => item.y >= -64)} onClick={() => chooseBin(i)}>{bin}</button>)}</div></div>
     </div>
     </div>

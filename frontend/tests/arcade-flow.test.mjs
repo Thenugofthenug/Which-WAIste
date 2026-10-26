@@ -50,7 +50,9 @@ function button(label) {
 }
 async function click(element) {
   assert.ok(element, 'Click target must exist')
+  const startsIntro = element.textContent === 'Start sorting at speed 2'
   await React.act(async () => element.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
+  if (startsIntro) await drive(30)
 }
 async function change(element, value) {
   await React.act(async () => {
