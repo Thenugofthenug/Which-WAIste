@@ -41,10 +41,11 @@ function button(text) {
   assert.ok(found, `Button not found: ${text}`)
   return found
 }
-async function click(element) {
+async function click(element, dismissInstructions = true) {
   const startsIntro = element.textContent === 'Start sorting at speed 2'
   await React.act(async () => element.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
   if (startsIntro) await drive(30)
+  if (dismissInstructions) await dismissActivityInstructions()
 }
 // Keep existing slow-speed regression scenarios at their original timing.
 async function startOrIncrease() {
