@@ -49,7 +49,7 @@ function RunResult({ results, baseline, settings }) {
   </section>
 }
 
-export default function LearningLab({ game, setGame, view, saving, track, onRateSettled, onActivity, onNext, onBack }) {
+export default function LearningLab({ game, setGame, view, saving, track, onRateSettled, onActivity, onNext, onBack, onHome }) {
   const [epochs, setEpochs] = useState(game.training.epochs || 3), [rate, setRate] = useState(game.training.learning_rate ? Math.log10(Number(game.training.learning_rate)) : -3)
   const [mode, setMode] = useState(() => recordedMode(game.training))
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
@@ -133,7 +133,7 @@ export default function LearningLab({ game, setGame, view, saving, track, onRate
     }
     finally { setBusy(false) }
   }
-  if (view === 'explore') return <RobotDetective game={game} track={track} onActivity={onActivity} onBack={onBack} />
+  if (view === 'explore') return <RobotDetective key={training.run_id || 'practice'} game={game} track={track} onActivity={onActivity} onBack={onBack} onHome={onHome} />
 
   return <section className="pixel-panel lab-panel training-panel guided-training" aria-label="Train">
     <header className="lab-mission-intro"><p className="eyebrow">Step 02 / Train</p><h2>Teach your robot</h2><p>Your mission: train once, inspect a practice round, then test what your robot learned.</p></header>

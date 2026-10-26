@@ -105,3 +105,22 @@ test('an old lesson cleanup still saves its own session after the recorder unmou
   await React.act(async () => requests[0].resolve({ saved: true }))
   assert.deepEqual(JSON.parse(window.sessionStorage.getItem('waiste-events-A')), [])
 })
+
+test('queued detective answers restore while offline and retry without duplicating points or crossing students', async () => {
+  const event = { type: 'activity', path: '/activity', body: { event_id: 'first-answer-id', kind: 'detective_answer',
+    question: 'predict_bin', answer: 'Compost', item_index: 0, training_run_id: 'old-training-run' } }
+  window.sessionStorage.setItem('waiste-events-A', JSON.stringify([event]))
+  const requests = requestsWithDeferredResponses()
+  await mount()
+  assert.deepEqual(controls.game.detective_answers, [event.body])
+  await React.act(async () => requests[0].reject(new Error('Offline')))
+  assert.equal(controls.recorder.pending, 1)
+  assert.deepEqual(controls.game.detective_answers, [event.body])
+  await React.act(async () => { void controls.recorder.retry() })
+  assert.equal(requests[1].body.event_id, event.body.event_id)
+  await React.act(async () => requests[1].resolve({ saved: true }))
+  assert.equal(controls.recorder.pending, 0)
+  assert.equal(controls.game.detective_answers.length, 1)
+  await React.act(async () => controls.setGame(initialGame('B')))
+  assert.equal(controls.game.detective_answers, undefined)
+})

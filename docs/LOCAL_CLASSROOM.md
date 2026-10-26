@@ -200,6 +200,60 @@ Student machines need no database ports or credentials; only the game's HTTP por
 
 ## 6. Local exports and data preservation
 
+### Third-stage answer collection
+
+The Robot Detective activities now start with the original image and let students
+submit answers before revealing the robot's choice. The back/next buttons sit
+inside the middle activity panel. Closing the case opens a dialog with Keep
+exploring and Return to main menu; neither clears the mission.
+
+Each activity shows a short How to play dialog on its first visit in a mission.
+Dismissal is remembered in that tab for the mission, so going back or selecting
+another item does not repeat it. The How to play button reopens the current
+instructions. Manual openings use the existing help-topic tracking (pixels,
+confidence, or new-items); automatic introductions do not inflate help-click
+counts. The item panel stretches with the activity row on larger screens and
+retains its compact layout on small screens.
+
+Each first choice for an item/question is recorded as `kind = 'detective_answer'`
+in the existing `activity_events` table, with its session and training-run IDs.
+The JSON `data` contains `question`, `answer`, and either `item_index` or
+`prediction_id`. The backend adds the actual item name and comparison evidence.
+`robot_input` has `concept_correct`; `predict_bin` and `test_destination` have
+`matches_robot` and `follows_guideline`. Robot agreement is a different check from
+following a disposal guideline. First answers stay visible when revisiting an item.
+No database migration or change to CNN training is required.
+
+Detective points award 10 participation points for answering each of the three
+question types, up to 30 per game session across all items and training runs.
+They are derived from recorded answers, separate from sorting points and model
+accuracy. Every first answer earns participation credit, including an incorrect
+concept answer. Answering more items records more evidence but cannot farm points.
+Pending responses use the existing retry queue; saved responses return on reload.
+
+In the LOCAL DataGrip console, this PostgreSQL query shows the new responses:
+
+```sql
+SELECT p.first_name, p.last_name, e.created_at, e.training_run_id,
+       e.data->>'question' AS question,
+       e.data->>'item_name' AS item,
+       e.data->>'answer' AS student_answer,
+       e.data->>'robot_choice' AS robot_choice,
+       e.data->>'concept_correct' AS concept_correct,
+       e.data->>'matches_robot' AS matches_robot,
+       e.data->>'follows_guideline' AS follows_guideline
+FROM activity_events e
+JOIN game_players gp ON gp.session_id = e.session_id
+JOIN players p ON p.id = gp.player_id
+WHERE e.kind = 'detective_answer'
+ORDER BY e.created_at DESC;
+```
+
+These fields also appear in the existing activity CSV export. Recorded comparisons
+are reconstructed from saved training/prediction evidence rather than trusting
+correctness supplied by the browser. This is selected learning-response tracking,
+not a recording of every mouse click.
+
 Run exports in another PowerShell terminal in the repository root. These commands
 select the same local-only settings as the launcher, ignoring inherited Render
 environment variables. Export folders below live under ignored `.data/`.

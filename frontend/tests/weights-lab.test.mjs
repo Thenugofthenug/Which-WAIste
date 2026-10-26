@@ -17,6 +17,11 @@ async function mount(Component = WeightExperiment, props = {}) {
   container = document.createElement('div'); document.body.append(container)
   root = createRoot(container)
   await React.act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Component, props))))
+  await dismissInstructions()
+}
+async function dismissInstructions() {
+  const start = document.querySelector('.detective-instructions-dialog button')
+  if (start) await React.act(async () => start.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
 }
 async function slider(index, value) {
   await React.act(async () => {
@@ -29,6 +34,7 @@ async function click(text) {
   const button = [...container.querySelectorAll('button')].find(button => button.textContent.trim() === text)
   assert.ok(button, `Button not found: ${text}`)
   await React.act(async () => button.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
+  await dismissInstructions()
 }
 const softmax = raw => raw.map(value => Math.exp(value) / raw.reduce((sum, item) => sum + Math.exp(item), 0))
 function scores() { return [...container.querySelectorAll('.detective-weight meter')].map(meter => meter.value) }
@@ -36,7 +42,7 @@ function complete() { return container.querySelectorAll('.weight-milestones [dat
 
 afterEach(async () => {
   if (root) await React.act(async () => root.unmount())
-  root = null; container?.remove()
+  root = null; container?.remove(); window.sessionStorage.clear()
 })
 after(async () => { await server.close(); dom.window.close() })
 
@@ -106,8 +112,9 @@ test('experiment changes remain separate from actual CNN predictions and all thr
   assert.deepEqual(game.training.results.predictions[0].probabilities, [.8, .15, .05])
   assert.equal(calls.length, 0)
   assert.equal(container.querySelectorAll('.detective-steps button').length, 3)
+  await click('Filters')
   assert.ok(container.querySelector('.filters-box'), 'The original filters remain available')
   await click('Next: follow the decision →')
-  await click('Reveal bin scores')
+  await click('Recycling')
   assert.deepEqual([...container.querySelectorAll('[aria-label="After training scores"] meter')].map(meter => meter.value), [.8, .15, .05])
 })

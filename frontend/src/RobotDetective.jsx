@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { api } from './api'
 import { BINS, COLORS } from './gameEngine'
 import HomeRobot from './HomeRobot'
@@ -8,10 +9,75 @@ import './RobotDetective.css'
 const percent = value => `${(value * 100).toFixed(1)}%`
 const winner = values => BINS[values.indexOf(Math.max(...values))]
 const STEPS = [
-  { name: 'Robot eyes', title: 'Look through robot eyes', action: 'Switch views, then try a different filter block.', takeaway: 'The robot receives numbers. Its layers respond to patterns in those numbers.' },
-  { name: 'The decision', title: 'Follow the decision', action: 'Reveal the scores. Compare the same item before and after training.', takeaway: 'The highest score chooses a bin. Training changes the scores by adjusting weights.' },
-  { name: 'The test', title: 'Test the robot', action: 'Try a new drawing, then an unfamiliar item. Does the chosen bin make sense?', takeaway: 'A high score can still be wrong, especially when none of the three bins fits.' },
+  { name: 'Robot eyes', title: 'Look through robot eyes', action: 'Start with the original picture. Answer, then explore its pixels and filters.', takeaway: 'The robot receives numbers. Its layers respond to patterns in those numbers.' },
+  { name: 'The decision', title: 'Follow the decision', action: 'Predict the winning bin, then compare your answer with the robot’s scores.', takeaway: 'The highest score chooses a bin. Training changes the scores by adjusting weights.' },
+  { name: 'The test', title: 'Test the robot', action: 'Choose where a new item belongs before revealing the robot’s decision.', takeaway: 'A high score can still be wrong, especially when none of the three bins fits.' },
 ]
+const INSTRUCTIONS = [
+  ['Look at the original picture and choose what you think the robot receives.', 'Switch to Pixels and Filters to explore how the picture changes inside the robot.', 'Use Next in the middle panel to follow its decision.'],
+  ['Pick a bin to predict the robot’s choice. Your first answer is recorded.', 'The scores then appear. Compare your prediction with the robot and the common guideline.', 'Try another item, or use Next to test a new drawing.'],
+  ['Choose Try a new drawing or Try an unfamiliar item.', 'Pick where you would send the item. You can choose somewhere outside the three bins.', 'Compare with the robot, then close the case or keep exploring.'],
+]
+const INSTRUCTION_TOPICS = ['pixels', 'confidence', 'new-items']
+
+function seenInstructions(key) {
+  try {
+    const saved = JSON.parse(window.sessionStorage.getItem(key) || '[]')
+    return Array.isArray(saved) ? saved.filter(value => [0, 1, 2].includes(value)) : []
+  } catch { return [] }
+}
+
+const INPUT_CHOICES = [['item_name', 'The item’s name'], ['pixel_values', 'Numbers for pixel colors'], ['bin_label', 'A bin label already attached']]
+const BIN_CHOICES = BINS.map(bin => [bin, bin])
+const TEST_CHOICES = [...BIN_CHOICES, ['outside_bins', 'Somewhere else / special disposal']]
+const choiceLabel = value => [...INPUT_CHOICES, ...TEST_CHOICES].find(([key]) => key === value)?.[1] || value
+
+function AnswerChoices({ question, choices, answer, onAnswer, children }) {
+  return <section className="detective-question" aria-label={question}>
+    <h4>{question}</h4>
+    <div className="detective-answers" role="group" aria-label="Your answer">{choices.map(([value, label]) =>
+      <button key={value} disabled={!!answer} aria-pressed={answer?.answer === value} onClick={() => onAnswer(value)}>{label}</button>)}</div>
+    {answer && <div className="detective-answer-feedback" role="status"><p><strong>Your answer:</strong> {choiceLabel(answer.answer)}</p>{children}</div>}
+    {!answer && <p className="muted">Pick one to record your first answer. Every answer helps you investigate.</p>}
+  </section>
+}
+
+function DetectiveDialog({ title, eyebrow, className = '', onDismiss, children }) {
+  const panel = useRef(null), id = useId()
+  useEffect(() => {
+    const previous = document.activeElement
+    const root = document.getElementById('root'), wasInert = root?.inert
+    if (root) root.inert = true
+    const buttons = [...panel.current.querySelectorAll('button')]
+    buttons[0].focus()
+    function keyboard(event) {
+      if (event.key === 'Escape') { event.preventDefault(); onDismiss() }
+      if (event.key === 'Tab') {
+        const index = buttons.indexOf(document.activeElement)
+        event.preventDefault()
+        buttons[(index + (event.shiftKey ? buttons.length - 1 : 1)) % buttons.length].focus()
+      }
+    }
+    document.addEventListener('keydown', keyboard)
+    return () => {
+      document.removeEventListener('keydown', keyboard)
+      if (root) root.inert = wasInert
+      if (previous?.isConnected) previous.focus()
+    }
+  }, [onDismiss])
+  return createPortal(<div className="modal-backdrop"><section ref={panel} className={`pixel-panel detective-dialog ${className}`} role="dialog" aria-modal="true" aria-labelledby={id}>
+    <p className="eyebrow">{eyebrow}</p><h2 id={id}>{title}</h2>{children}
+  </section></div>, document.body)
+}
+
+function CaseClosed({ points, onContinue, onHome }) {
+  return <DetectiveDialog className="detective-case-dialog" title="Case closed!" eyebrow="Investigation complete" onDismiss={onContinue}>
+    <p className="detective-points">Detective points: {points} / 30</p>
+    <p>Your labels supplied examples. Training adjusted weights to learn patterns. Those patterns produced bin scores—but even a confident robot can make a mistake.</p>
+    <p>Where would you like to go? Your mission and recorded answers stay saved.</p>
+    <div className="detective-case-actions"><button className="green" onClick={onContinue}>Keep exploring</button><button onClick={onHome}>Return to main menu</button></div>
+  </DetectiveDialog>
+}
 
 function ExtraHelp({ title, topic, track, disclosure = false, children }) {
   if (!disclosure) return <DefinitionBubble className="detective-definition" title={title} topic={topic} track={track}>{children}</DefinitionBubble>
@@ -138,8 +204,8 @@ export function WeightExperiment({ track, onActivity, navigationKey }) {
   </section>
 }
 
-function RobotEyes({ item, track }) {
-  const [vision, setVision] = useState('filters'), [block, setBlock] = useState(0)
+function RobotEyes({ item, track, answer, onAnswer }) {
+  const [vision, setVision] = useState('original'), [block, setBlock] = useState(0)
   const layer = item.inspection.layers[block]
   return <>
     <div className="detective-view-switch" role="group" aria-label="How the robot sees the item">
@@ -155,14 +221,20 @@ function RobotEyes({ item, track }) {
       {layer && <><div className="detective-maps">{layer.maps.map(map => <figure key={map.channel}><img src={map.image} alt={`${layer.name} channel ${map.channel} response for ${item.name}`} /><figcaption>Filter {map.channel}</figcaption></figure>)}</div><p className="muted">{layer.name}: {layer.shape.join(' × ')} · Two real response maps</p></>}
       <ExtraHelp title="What do these pictures mean?" topic="filters" track={track}><p>Two channels per block are selected by average response. Brighter means stronger within that map. Each map is scaled to its own maximum, so brightness cannot be compared across maps. These are activation maps, not human concepts or a complete explanation.</p><p>ReLU keeps positive responses; pooling shrinks the grids. Later layers combine earlier responses.</p></ExtraHelp>
     </section>}
+    <AnswerChoices question="What does the robot receive from this picture?" choices={INPUT_CHOICES} answer={answer} onAnswer={onAnswer}>
+      <p>{answer?.answer === 'pixel_values' ? 'You found it!' : 'Here is the clue:'} The CNN receives numbers for red, green and blue pixels, not the item’s name or its correct bin. Try Pixels and Filters to follow those numbers.</p>
+    </AnswerChoices>
   </>
 }
 
-function Decision({ item, track }) {
-  const [revealed, setRevealed] = useState(false), [compare, setCompare] = useState(false)
+function Decision({ item, track, answer, onAnswer }) {
+  const [compare, setCompare] = useState(false)
   return <>
     <div className="detective-flow" aria-label="Decision path"><span>Image numbers</span><b aria-hidden="true">→</b><span>Learned patterns</span><b aria-hidden="true">→</b><span>Three scores</span></div>
-    {!revealed ? <div className="detective-reveal"><p>The CNN gives every bin a score.</p><p className="muted">Which bin do you think will come out on top?</p><button className="green" onClick={() => setRevealed(true)}>Reveal bin scores</button></div> : <>
+    <AnswerChoices question="Which bin will the robot choose?" choices={BIN_CHOICES} answer={answer} onAnswer={onAnswer}>
+      <p>{answer?.answer === winner(item.probabilities) ? 'Your prediction matched the robot.' : `You predicted ${answer?.answer}; the robot chose ${winner(item.probabilities)}.`} Matching the robot and choosing the right disposal bin are different checks.</p>
+    </AnswerChoices>
+    {answer && <>
       <div className="detective-pick" role="status">Robot's pick: <strong>{winner(item.probabilities)}</strong> <span>{percent(Math.max(...item.probabilities))} score</span></div>
       <div className={compare ? 'comparison detective-comparison' : ''}>
         {compare && <section aria-label="Before training scores"><h4>Before training</h4><Scores values={item.before} /><p className="muted">Pick: {winner(item.before)}</p></section>}
@@ -176,13 +248,44 @@ function Decision({ item, track }) {
   </>
 }
 
-export default function RobotDetective({ game, track, onBack, onActivity }) {
+export default function RobotDetective({ game, track, onBack, onActivity, onHome }) {
   const [step, setStep] = useState(0), [index, setIndex] = useState(0), [finished, setFinished] = useState(false)
   const [fresh, setFresh] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const [localAnswers, setLocalAnswers] = useState([])
+  const instructionKey = `waiste-detective-instructions-${game.id}`
+  const [seenSteps, setSeenSteps] = useState(() => seenInstructions(instructionKey))
+  const [replayInstructions, setReplayInstructions] = useState(false)
+  const submitted = useRef(new Set())
+  const answers = [...(game.detective_answers || []), ...localAnswers]
+  const points = new Set(answers.map(answer => answer.question)).size * 10
   const predictions = game.training.results?.predictions || []
   const item = predictions[Math.min(index, predictions.length - 1)]
   const evidence = step === 2 && fresh ? fresh : item
   const lesson = STEPS[step]
+  function findAnswer(question) {
+    return answers.find(answer => answer.question === question &&
+      answer.training_run_id === (question === 'test_destination' ? fresh?.training_run_id : game.training.run_id) &&
+      (question === 'test_destination' ? answer.prediction_id === fresh?.prediction_id : answer.item_index === index))
+  }
+  function recordAnswer(question, answer) {
+    const training_run_id = question === 'test_destination' ? fresh?.training_run_id : game.training.run_id
+    const context = question === 'test_destination' ? { prediction_id: fresh.prediction_id } : { item_index: index }
+    const key = `${training_run_id}:${question}:${context.prediction_id ?? index}`
+    if (findAnswer(question) || submitted.current.has(key)) return
+    submitted.current.add(key)
+    const event = { kind: 'detective_answer', question, answer, training_run_id, ...context }
+    setLocalAnswers(current => [...current, event])
+    onActivity?.(event)
+  }
+  const inputAnswer = findAnswer('robot_input'), decisionAnswer = findAnswer('predict_bin'), testAnswer = findAnswer('test_destination')
+  const keepExploring = useCallback(() => setFinished(false), [])
+  const closeInstructions = useCallback(() => {
+    const next = seenSteps.includes(step) ? seenSteps : [...seenSteps, step]
+    setSeenSteps(next)
+    setReplayInstructions(false)
+    // A storage restriction must not trap the student in an instruction dialog.
+    try { window.sessionStorage.setItem(instructionKey, JSON.stringify(next)) } catch { /* Keep the in-memory visit state. */ }
+  }, [instructionKey, seenSteps, step])
 
   async function tryItem(novel) {
     setBusy(true); setError(''); setFresh(null)
@@ -195,26 +298,33 @@ export default function RobotDetective({ game, track, onBack, onActivity }) {
   return <section className="pixel-panel lab-panel detective-panel" data-step={step} aria-label="Explore">
     <header className="section-heading detective-heading"><div><p className="eyebrow">Step 03 / Test</p><h2>Test your robot</h2><p>Become a Robot Detective. Find out how it chooses a bin, and whether you can trust it.</p></div><HomeRobot variant="heading" /></header>
     {!item ? <p>Complete training to investigate the robot's predictions.</p> : <>
-      <nav className="detective-steps" aria-label="Investigation steps">{STEPS.map((lesson, i) => <button key={lesson.name} aria-current={step === i ? 'step' : undefined} onClick={() => goTo(i)}><span>{i + 1}</span>{lesson.name}</button>)}</nav>
-      <div className="detective-task"><p className="eyebrow" role="status">Step {step + 1} of 3</p><h3 id="detective-task-title">{lesson.title}</h3><p>{lesson.action}</p></div>
+      <nav className="detective-steps" aria-label="Investigation steps">{STEPS.map((lesson, i) => <button key={lesson.name} disabled={busy} aria-current={step === i ? 'step' : undefined} onClick={() => goTo(i)}><span>{i + 1}</span>{lesson.name}</button>)}</nav>
+      <div className="detective-task"><div className="detective-task-copy"><p className="eyebrow" role="status">Step {step + 1} of 3</p><h3 id="detective-task-title">{lesson.title}</h3><p>{lesson.action}</p></div><button className="detective-instructions-button" onClick={() => { setReplayInstructions(true); track?.(INSTRUCTION_TOPICS[step]) }}>How to play</button></div>
       <div className="detective-workspace">
         <aside className="detective-evidence inset" aria-label="Investigation item">
           <p className="eyebrow">{step === 2 ? fresh ? 'New evidence' : 'Ready for a new test' : 'Your test item'}</p>
           {step !== 2 && <label>Choose a test item<select value={index} disabled={busy} onChange={e => { setIndex(Number(e.target.value)); setFresh(null) }}>{predictions.map((prediction, i) => <option key={i} value={i}>{prediction.name}</option>)}</select></label>}
-          <img className="detective-item-image" src={evidence.image} alt={evidence.name} /><h4>{evidence.name}</h4>
+          <div className="detective-item-preview"><img className="detective-item-image" src={evidence.image} alt={evidence.name} /><h4>{evidence.name}</h4></div>
           <p className="muted">{step === 2 ? fresh ? 'This new drawing was not used to train your robot.' : 'Try the buttons to give your robot a new drawing.' : 'Held aside for testing. This picture did not update the robot’s weights.'}</p>
         </aside>
         <article className="detective-main inset" aria-labelledby="detective-task-title">
-          <div hidden={step !== 0}><RobotEyes key={index} item={item} track={track} /></div>
-          <div hidden={step !== 1}><Decision key={index} item={item} track={track} /></div>
+          <div hidden={step !== 0}><RobotEyes key={index} item={item} track={track} answer={inputAnswer} onAnswer={answer => recordAnswer('robot_input', answer)} /></div>
+          <div hidden={step !== 1}><Decision key={index} item={item} track={track} answer={decisionAnswer} onAnswer={answer => recordAnswer('predict_bin', answer)} /></div>
           <div hidden={step !== 2}>
             <div className="detective-test-buttons"><button disabled={busy} onClick={() => tryItem(false)}>Try a new drawing<span>A familiar kind of waste</span></button><button disabled={busy} onClick={() => tryItem(true)}>Try an unfamiliar item<span>Could it need a different bin?</span></button></div>
             {busy && <p role="status">The robot is checking a new image…</p>}
             {error && <p className="error" role="alert">{error} Try either test button again.</p>}
             {!fresh && !busy && !error && <div className="detective-reveal"><p>Will it recognize another drawing?</p><p className="muted">Then see what happens when an item needs a destination outside its three bins.</p></div>}
-            {fresh && <div className="detective-test-result" aria-live="polite"><div className="detective-pick">Robot's pick: <strong>{winner(fresh.probabilities)}</strong><span>{percent(Math.max(...fresh.probabilities))} score</span></div><Scores values={fresh.probabilities} /><p>Common destination: <strong>{fresh.destination}</strong></p><p className={fresh.has_valid_bin ? 'education-note' : 'detective-caution'}>{fresh.has_valid_bin ? 'Compare the chosen bin with the common destination. Does the robot’s decision fit this new drawing?' : 'None of the robot’s three bins is suitable! It still has to pick one. A high score cannot create a missing category.'}</p><ExtraHelp title="Look inside this new prediction" topic="filters" track={track} disclosure><Network viz={fresh.viz} /></ExtraHelp></div>}
+            {fresh && <>
+              <AnswerChoices question="Where would you send this new item?" choices={TEST_CHOICES} answer={testAnswer} onAnswer={answer => recordAnswer('test_destination', answer)}>
+                <p>{testAnswer?.answer === (fresh.has_valid_bin ? fresh.destination : 'outside_bins') ? 'Your choice fits the common guideline.' : 'Compare your choice with the common destination below. Local disposal rules can vary.'}</p>
+              </AnswerChoices>
+              {testAnswer && <div className="detective-test-result" aria-live="polite"><div className="detective-pick">Robot's pick: <strong>{winner(fresh.probabilities)}</strong><span>{percent(Math.max(...fresh.probabilities))} score</span></div><Scores values={fresh.probabilities} /><p>Common destination: <strong>{fresh.destination}</strong></p><p className={fresh.has_valid_bin ? 'education-note' : 'detective-caution'}>{fresh.has_valid_bin ? 'Compare the chosen bin with the common destination. Does the robot’s decision fit this new drawing?' : 'None of the robot’s three bins is suitable! It still has to pick one. A high score cannot create a missing category.'}</p><ExtraHelp title="Look inside this new prediction" topic="filters" track={track} disclosure><Network viz={fresh.viz} /></ExtraHelp></div>}
+            </>}
             <ExtraHelp title="Tell me more about new items" topic="new-items" track={track}><p>These drawings were not in your training dataset. A familiar type tests whether the robot can use its learned patterns on a new drawing. An unfamiliar type can reveal limits of its three categories. It has no “I don’t know” option.</p></ExtraHelp>
           </div>
+          <div className="detective-progress"><strong>Detective points: {points} / 30</strong><span>+10 for your first answer in each activity. Participation points, separate from sorting and model accuracy.</span></div>
+          <footer className="detective-navigation" aria-label="Activity navigation"><button disabled={step === 0 || busy} onClick={() => goTo(step - 1)}>← Back</button>{step < 2 ? <button className="green" disabled={busy} onClick={() => goTo(step + 1)}>{step === 0 ? 'Next: follow the decision →' : 'Next: test the robot →'}</button> : <button className="green" disabled={busy} onClick={() => setFinished(true)}>Close the case</button>}</footer>
         </article>
         <aside className="detective-notes inset" aria-label="Investigation notes"><p className="eyebrow">Detective notes</p><h4>{step === 0 ? 'Look for a change' : step === 1 ? 'Check the evidence' : 'Confidence ≠ correctness'}</h4>
           {step === 0 && <><p>Do different blocks light up in different places?</p><p className="muted">Bright means a stronger response within that map. It does not tell us the robot understands the object.</p><ExtraHelp title="Tell me more about pixels" topic="pixels" track={track}><p>Each pixel has red, green and blue values from 0–255. These are scaled to −1–1 before the CNN uses them. It receives these color values, not the item’s name.</p></ExtraHelp></>}
@@ -223,8 +333,11 @@ export default function RobotDetective({ game, track, onBack, onActivity }) {
           <div className="detective-takeaway"><b>Keep this idea</b><p>{lesson.takeaway}</p></div>
         </aside>
       </div>
-      <footer className="detective-navigation"><button disabled={step === 0} onClick={() => goTo(step - 1)}>← Back</button><span>You can revisit every step.</span>{step < 2 ? <button className="green" onClick={() => goTo(step + 1)}>{step === 0 ? 'Next: follow the decision →' : 'Next: test the robot →'}</button> : <button className="green" disabled={finished} onClick={() => setFinished(true)}>{finished ? 'Case closed ✓' : 'Close the case'}</button>}</footer>
-      {finished && <section className="detective-case-notes" role="status"><h3>Case closed. What did we discover?</h3><p>Your labels supplied examples. Training adjusted weights to learn patterns. Those patterns produced bin scores—but even a confident robot can make a mistake.</p><button onClick={() => goTo(0)}>Investigate again</button></section>}
+      {finished && <CaseClosed points={points} onContinue={keepExploring} onHome={() => { setFinished(false); onHome?.() }} />}
+      {!finished && (replayInstructions || !seenSteps.includes(step)) && <DetectiveDialog className="detective-instructions-dialog" title={lesson.title} eyebrow={`Activity ${step + 1} of 3 / How to play`} onDismiss={closeInstructions}>
+        <ol className="detective-instruction-list">{INSTRUCTIONS[step].map(instruction => <li key={instruction}>{instruction}</li>)}</ol>
+        <button className="green" onClick={closeInstructions}>Let’s investigate</button>
+      </DetectiveDialog>}
       <ExtraHelp title="Optional lab: experiment with weights" topic="weights" track={track} disclosure><WeightExperiment track={track} onActivity={onActivity} navigationKey={step} /></ExtraHelp>
     </>}
     <div className="detective-stage-back"><button onClick={onBack}>← Back: training</button></div>

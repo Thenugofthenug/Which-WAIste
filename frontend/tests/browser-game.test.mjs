@@ -25,18 +25,26 @@ const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAw
 const game = { id: '11111111-1111-4111-8111-111111111111', items: Array.from({ length: 30 }, (_, index) => ({ index, name: 'Item ' + index, image })),
   actions: [], summary: { resolved: 0, correct: 0, wrong: 0, missed: 0, score: 0, streak: 0, best_streak: 0 }, training: { status: 'ready', history: [] } }
 let container, root
-async function mount(Component, props = {}) {
+async function dismissActivityInstructions() {
+  const start = document.querySelector('.detective-instructions-dialog button')
+  if (start) await React.act(async () => start.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
+}
+async function mount(Component, props = {}, dismissInstructions = true) {
   if (Component === App) window.sessionStorage.setItem('waiste-player', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
   container = document.createElement('div'); document.body.append(container)
   root = createRoot(container)
   await React.act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Component, props))))
+  if (dismissInstructions) await dismissActivityInstructions()
 }
 function button(text) {
   const found = [...container.querySelectorAll('button')].find(element => element.textContent.trim() === text)
   assert.ok(found, `Button not found: ${text}`)
   return found
 }
-async function click(element) { await React.act(async () => element.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))) }
+async function click(element, dismissInstructions = true) {
+  await React.act(async () => element.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
+  if (dismissInstructions) await dismissActivityInstructions()
+}
 // Keep existing slow-speed regression scenarios at their original timing.
 async function startOrIncrease() {
   const start = [...container.querySelectorAll('button')].find(element => element.textContent === 'Start sorting at speed 2')
@@ -750,9 +758,54 @@ function detectiveGame() {
         maps: [{ channel: index * 2, image }, { channel: index * 2 + 1, image }] })) },
     viz: { edges: [], layers: Array.from({ length: 6 }, (_, i) => ({ labels: i === 5 ? ['Recycling', 'Compost', 'Landfill'] : ['F1'], level: i === 5 ? [.8, .15, .05] : [.5], raw: i === 5 ? [.8, .15, .05] : [.5] })) },
   })
-  return { ...game, summary: { ...game.summary, resolved: 30 }, training: { ...game.training, status: 'done',
+  return { ...game, summary: { ...game.summary, resolved: 30 }, training: { ...game.training, status: 'done', run_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
     results: { predictions: [prediction('Test can'), prediction('Test carton')] } } }
 }
+
+test('activity instructions appear once per mission step, reopen on demand, and preserve answers on return', async () => {
+  const completed = detectiveGame(), topics = [], events = []
+  await mount(RobotDetective, { game: completed, track: topic => topics.push(topic), onActivity: event => events.push(event) }, false)
+  const popup = () => document.querySelector('.detective-instructions-dialog')
+  assert.match(popup().textContent, /Look through robot eyes/)
+  assert.equal(popup().querySelectorAll('li').length, 3)
+  assert.equal(document.activeElement, popup().querySelector('button'))
+  assert.equal(popup().getAttribute('aria-modal'), 'true')
+  await React.act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+  assert.equal(popup(), null)
+  await click(button('Numbers for pixel colors'), false)
+  await click(button('Next: follow the decision →'), false)
+  assert.match(popup().textContent, /Follow the decision/)
+  await dismissActivityInstructions()
+  await click(button('Compost'), false)
+  await click(button('← Back'), false)
+  assert.equal(popup(), null, 'Going back should not repeat instructions')
+  assert.equal(button('Numbers for pixel colors').getAttribute('aria-pressed'), 'true')
+  const reopen = button('How to play')
+  reopen.focus()
+  await click(reopen, false)
+  assert.ok(popup())
+  assert.deepEqual(topics, ['pixels'], 'Only a manual help opening adds a topic event')
+  await dismissActivityInstructions()
+  assert.equal(document.activeElement, reopen)
+  await click(button('Next: follow the decision →'), false)
+  assert.equal(popup(), null)
+  assert.equal(button('Compost').getAttribute('aria-pressed'), 'true')
+  await click(button('Next: test the robot →'), false)
+  assert.match(popup().textContent, /Test the robot/)
+  await dismissActivityInstructions()
+  assert.equal(events.length, 2, 'Instruction dialogs must not submit answers or award points')
+  assert.deepEqual(JSON.parse(window.sessionStorage.getItem(`waiste-detective-instructions-${completed.id}`)), [0, 1, 2])
+  await React.act(async () => root.unmount())
+  root = null; container.remove()
+  await mount(RobotDetective, { game: completed }, false)
+  assert.equal(popup(), null, 'The same mission should remember instructions across remounts')
+  await click(container.querySelectorAll('.detective-steps button')[2], false)
+  assert.equal(popup(), null)
+  await React.act(async () => root.unmount())
+  root = null; container.remove()
+  await mount(RobotDetective, { game: { ...completed, id: 'new-mission' } }, false)
+  assert.ok(popup(), 'A new mission receives its own introduction')
+})
 
 test('Robot Detective presents one task at a time and preserves the image and views when going back', async () => {
   const completed = detectiveGame()
@@ -760,8 +813,10 @@ test('Robot Detective presents one task at a time and preserves the image and vi
   assert.equal(container.querySelector('.detective-heading h2').textContent, 'Test your robot')
   assert.equal(container.querySelector('.detective-task [role="status"]').textContent, 'Step 1 of 3')
   assert.equal(button('← Back').disabled, true)
-  assert.ok(container.querySelector('.filters-box'))
-  assert.equal(button('Reveal bin scores').closest('[hidden]') !== null, true)
+  assert.equal(button('Original').getAttribute('aria-pressed'), 'true')
+  assert.equal(button('Recycling').closest('[hidden]') !== null, true)
+  assert.ok(button('← Back').closest('.detective-main'), 'Activity navigation belongs to the middle panel')
+  await click(button('Filters'))
   await click(button('Block 3'))
   assert.ok(container.querySelector('[alt="Block 3 channel 4 response for Test can"]'))
   await click(button('Pixels'))
@@ -775,8 +830,8 @@ test('Robot Detective presents one task at a time and preserves the image and vi
   await click(button('Pixels'))
   await click(button('Next: follow the decision →'))
   assert.equal(container.querySelector('.detective-task [role="status"]').textContent, 'Step 2 of 3')
-  assert.equal(button('Reveal bin scores').closest('[hidden]'), null)
-  await click(button('Reveal bin scores'))
+  assert.equal(button('Recycling').closest('[hidden]'), null)
+  await click(button('Recycling'))
   const after = container.querySelector('[aria-label="After training scores"]')
   assert.deepEqual([...after.querySelectorAll('meter')].map(meter => meter.value), [.8, .15, .05])
   assert.match(container.querySelector('.detective-pick').textContent, /Recycling.*80.0%/)
@@ -799,6 +854,8 @@ test('Robot Detective tests new images through the API, recovers from errors, an
     if (fail) throw new Error('Connection interrupted')
     const novel = url.endsWith('novel=true')
     return { ok: true, json: async () => ({ ...completed.training.results.predictions[0], name: novel ? 'Battery' : 'New can',
+      prediction_id: novel ? 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' : 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      training_run_id: completed.training.run_id,
       has_valid_bin: !novel, destination: novel ? 'Special collection' : 'Recycling' }) }
   }
   await mount(RobotDetective, { game: completed })
@@ -810,6 +867,8 @@ test('Robot Detective tests new images through the API, recovers from errors, an
   await click(container.querySelectorAll('.detective-test-buttons button')[1])
   assert.equal(container.querySelector('[role="alert"]'), null)
   assert.equal(container.querySelector('.detective-item-image').alt, 'Battery')
+  assert.equal(container.querySelector('.detective-test-result'), null, 'Answer before the robot and destination are revealed')
+  await click(button('Somewhere else / special disposal'))
   assert.match(container.querySelector('.detective-test-result').textContent, /Special collection/)
   assert.match(container.querySelector('.detective-caution').textContent, /None of the robot’s three bins is suitable/)
   assert.deepEqual([...container.querySelectorAll('.detective-test-result meter')].map(meter => meter.value), [.8, .15, .05])
@@ -819,9 +878,10 @@ test('Robot Detective tests new images through the API, recovers from errors, an
   assert.ok(calls.every(([url, method]) => url.startsWith(`/api/sessions/${game.id}/try-item?novel=`) && method === 'POST'))
   assert.ok(calls.at(-1)[0].endsWith('novel=false'))
   await click(button('Close the case'))
-  assert.match(container.querySelector('.detective-case-notes').textContent, /Training adjusted weights/)
-  await click(button('Investigate again'))
-  assert.equal(container.querySelector('.detective-task [role="status"]').textContent, 'Step 1 of 3')
+  assert.match(document.querySelector('.detective-case-dialog').textContent, /Training adjusted weights/)
+  await click([...document.querySelectorAll('.detective-case-dialog button')].find(button => button.textContent === 'Keep exploring'))
+  assert.equal(document.querySelector('.detective-case-dialog'), null)
+  assert.equal(container.querySelector('.detective-task [role="status"]').textContent, 'Step 3 of 3')
 })
 
 test('definition bubbles save each opening through the session help API and closing adds no event', async () => {
@@ -850,6 +910,86 @@ test('definition bubbles save each opening through the session help API and clos
   assert.equal(events.length, 2)
 })
 
+test('detective answers record first choices, compare without grading robot agreement, and cap participation points', async () => {
+  const completed = detectiveGame(), events = []
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({
+    ...completed.training.results.predictions[0], name: 'Battery', has_valid_bin: false, destination: 'Special collection',
+    prediction_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', training_run_id: completed.training.run_id,
+  }) })
+  await mount(RobotDetective, { game: completed, onActivity: event => events.push(event) })
+  await click(button('The item’s name'))
+  assert.match(container.querySelector('.detective-answer-feedback').textContent, /not the item’s name/)
+  assert.match(container.querySelector('.detective-progress').textContent, /10 \/ 30/)
+  assert.ok(button('Numbers for pixel colors').disabled, 'First answer remains recorded')
+  const select = container.querySelector('.detective-evidence select')
+  await React.act(async () => { select.value = '1'; select.dispatchEvent(new window.Event('change', { bubbles: true })) })
+  await click(button('Numbers for pixel colors'))
+  assert.match(container.querySelector('.detective-progress').textContent, /10 \/ 30/, 'Changing items cannot farm points')
+  await click(button('Next: follow the decision →'))
+  await click(button('Compost'))
+  assert.match(container.querySelector('[aria-label="Which bin will the robot choose?"]').textContent, /You predicted Compost; the robot chose Recycling/)
+  assert.match(container.querySelector('.detective-progress').textContent, /20 \/ 30/, 'Different predictions still earn participation credit')
+  await click(button('Next: test the robot →'))
+  await click(container.querySelectorAll('.detective-test-buttons button')[1])
+  await click(button('Somewhere else / special disposal'))
+  assert.match(container.querySelector('.detective-progress').textContent, /30 \/ 30/)
+  assert.deepEqual(events.map(event => [event.question, event.answer]), [
+    ['robot_input', 'item_name'], ['robot_input', 'pixel_values'], ['predict_bin', 'Compost'], ['test_destination', 'outside_bins'],
+  ])
+  assert.equal(events.at(-1).prediction_id, 'dddddddd-dddd-4ddd-8ddd-dddddddddddd')
+  assert.ok(events.every(event => event.training_run_id === completed.training.run_id))
+  await click(button('← Back'))
+  assert.equal(button('Compost').getAttribute('aria-pressed'), 'true')
+  await click(button('← Back'))
+  assert.equal(button('Numbers for pixel colors').getAttribute('aria-pressed'), 'true')
+})
+
+test('App queues detective answers and closing the case returns to the menu without resetting the mission', async () => {
+  const completed = detectiveGame(), events = []
+  completed.detective_answers = [{ question: 'robot_input', answer: 'pixel_values', item_index: 0,
+    training_run_id: completed.training.run_id, event_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' }]
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/sessions') return { ok: true, json: async () => structuredClone(completed) }
+    assert.equal(url, `/api/sessions/${game.id}/activity`)
+    events.push(JSON.parse(init.body))
+    return { ok: true, json: async () => ({ saved: true }) }
+  }
+  await mount(App)
+  await click(button('START'))
+  await click(button('3 · Test'))
+  assert.equal(button('Numbers for pixel colors').getAttribute('aria-pressed'), 'true')
+  assert.match(container.querySelector('.detective-progress').textContent, /10 \/ 30/)
+  await click(button('Next: follow the decision →'))
+  await click(container.querySelector('[aria-label="Which bin will the robot choose?"] button'))
+  assert.equal(events.length, 1)
+  assert.equal(events[0].kind, 'detective_answer')
+  assert.equal(events[0].training_run_id, completed.training.run_id)
+  assert.match(events[0].event_id, /^[0-9a-f-]{36}$/)
+  await click(button('Next: test the robot →'))
+  const close = button('Close the case')
+  close.focus()
+  await click(close)
+  const modalButtons = () => [...document.querySelectorAll('.detective-case-dialog button')]
+  assert.equal(document.activeElement, modalButtons()[0])
+  await React.act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true })))
+  assert.equal(document.activeElement, modalButtons()[1])
+  await React.act(async () => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+  assert.equal(document.querySelector('.detective-case-dialog'), null)
+  assert.equal(document.activeElement, close)
+  await click(close)
+  await click(modalButtons()[1])
+  assert.ok(container.querySelector('.title-screen'))
+  assert.equal(document.querySelector('.detective-case-dialog'), null)
+  await click(button('Resume mission'))
+  assert.equal(container.querySelector('.detective-task [role="status"]').textContent, 'Step 3 of 3')
+  await click(button('2 · Train'))
+  await click(button('3 · Test'))
+  assert.match(container.querySelector('.detective-progress').textContent, /20 \/ 30/, 'Answers survive leaving and returning to the stage')
+  await click(button('Next: follow the decision →'))
+  assert.equal(container.querySelector('[aria-label="Which bin will the robot choose?"] button').getAttribute('aria-pressed'), 'true')
+  assert.equal(events.length, 1, 'Navigation must not record another answer')
+})
+
 test('optional help records topic openings and the demonstration sliders do not change real CNN scores', async () => {
   const topics = [], completed = detectiveGame()
   await mount(RobotDetective, { game: completed, track: topic => topics.push(topic) })
@@ -865,6 +1005,7 @@ test('optional help records topic openings and the demonstration sliders do not 
     await React.act(async () => { details.open = true; await new Promise(resolve => setTimeout(resolve, 0)) })
     return details
   }
+  await click(button('Filters'))
   await openHelp('What do these pictures mean?')
   await openHelp('Tell me more about pixels')
   await openHelp('Optional lab: experiment with weights')
@@ -884,7 +1025,7 @@ test('optional help records topic openings and the demonstration sliders do not 
   await openHelp('Open the real CNN diagram')
   assert.equal(topics.at(-1), 'weights')
   assert.ok(container.querySelector('.network-figure svg'))
-  await click(button('Reveal bin scores'))
+  await click(button('Recycling'))
   assert.deepEqual([...container.querySelectorAll('[aria-label="After training scores"] meter')].map(meter => meter.value), [.8, .15, .05])
 })
 

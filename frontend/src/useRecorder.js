@@ -55,6 +55,14 @@ export default function useRecorder(id, setGame, setFeedback) {
           }
           callbacks.current.setFeedback(current => active.current === session ? feedback : current)
         }
+        if (event.type === 'activity' && event.body.kind === 'detective_answer' && active.current === session) {
+          callbacks.current.setGame(current => {
+            if (current?.id !== session.id) return current
+            const answers = current.detective_answers || []
+            if (answers.some(answer => answer.event_id === event.body.event_id)) return current
+            return { ...current, detective_answers: [...answers, event.body] }
+          })
+        }
         session.queue.shift()
         persist(session)
       }
@@ -66,6 +74,14 @@ export default function useRecorder(id, setGame, setFeedback) {
   useLayoutEffect(() => {
     active.current = context
     callbacks.current = { setGame, setFeedback }
+    // Restore first answers even if their queued save is still offline after reload.
+    const pendingAnswers = context?.queue.filter(event => event.type === 'activity' && event.body.kind === 'detective_answer').map(event => event.body) || []
+    if (pendingAnswers.length) setGame(current => {
+      if (current?.id !== context.id) return current
+      const saved = current.detective_answers || []
+      const missing = pendingAnswers.filter(answer => !saved.some(entry => entry.event_id === answer.event_id))
+      return missing.length ? { ...current, detective_answers: [...saved, ...missing] } : current
+    })
     void pump(context)
     return () => { if (active.current === context) active.current = null }
   }, [context, pump, setGame, setFeedback])

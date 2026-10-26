@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select, text
 
-from backend.database import ActivityEvent, Game, GamePlayer, Player, SortAction, TrainingRun
+from backend.database import ActivityEvent, Game, GamePlayer, Player, SortAction, TrainingRun, TryClick
 from backend.main import create_app
 from backend.stats_report import collect_report, export_csv
 
@@ -163,6 +163,55 @@ class StudentTrackingTests(unittest.TestCase):
                 self.assertEqual(events[0].data, {'goal': 'more_practice'})
                 self.assertEqual(events[1].data, {'epoch': 2})
                 self.assertEqual(events[2].training_run_id, run_id)
+
+    def test_detective_answers_link_to_real_evidence_survive_reload_and_export(self):
+        game_id = self.game(self.player())['id']
+        other_game_id = self.game()['id']
+        run_id, click_id, other_click = str(uuid4()), str(uuid4()), str(uuid4())
+        with self.app.state.Session.begin() as db:
+            db.add(TrainingRun(id=run_id, session_id=game_id, status='done', epochs=3, learning_rate='.001',
+                               results={'predictions': [{'name': 'Can', 'probabilities': [.8, .1, .1], 'guideline': 'Recycling'}]}))
+            db.flush()
+            for identity, session in ((click_id, game_id), (other_click, other_game_id)):
+                db.add(TryClick(id=identity, session_id=session, training_run_id=run_id, kind='never_seen',
+                                item_name='Battery', predicted_class=2, confidence=.9,
+                                destination='Special collection', correct=None))
+        for fields in (
+                dict(question='robot_input', answer='item_name', item_index=0),
+                dict(question='predict_bin', answer='Compost', item_index=0),
+                dict(question='test_destination', answer='outside_bins', prediction_id=click_id)):
+            event, response = self.activity(game_id, 'detective_answer', training_run_id=run_id, **fields)
+            self.assertEqual(response.status_code, 201, response.text)
+            path = f'/api/sessions/{game_id}/activity'
+            self.assertEqual(self.client.post(path, json=event).status_code, 201)
+            other_answer = 'pixel_values' if fields['question'] == 'robot_input' else 'Recycling'
+            self.assertEqual(self.client.post(path, json={**event, 'answer': other_answer}).status_code, 409)
+        rows = self.client.get(f'/api/sessions/{game_id}').json()['detective_answers']
+        self.assertEqual(len(rows), 3)
+        self.assertFalse(rows[0]['concept_correct'])
+        self.assertFalse(rows[1]['matches_robot'])
+        self.assertFalse(rows[1]['follows_guideline'])
+        self.assertEqual(rows[2]['robot_choice'], 'Landfill')
+        self.assertFalse(rows[2]['matches_robot'])
+        self.assertTrue(rows[2]['follows_guideline'])
+        self.assertEqual(rows[2]['prediction_id'], click_id)
+        for fields in (
+                dict(question='robot_input', answer='Recycling', item_index=0),
+                dict(question='robot_input', answer='pixel_values'),
+                dict(question='robot_input', answer='pixel_values', item_index=0, prediction_id=click_id),
+                dict(question='predict_bin', answer='Recycling', item_index=29),
+                dict(question='predict_bin', answer='outside_bins', item_index=0),
+                dict(question='test_destination', answer='outside_bins', prediction_id=other_click),
+                dict(question='test_destination', answer='outside_bins', prediction_id=str(uuid4())),
+                dict(question='test_destination', answer='outside_bins', prediction_id=click_id, weight=1),
+        ):
+            self.assertEqual(self.activity(game_id, 'detective_answer', training_run_id=run_id, **fields)[1].status_code, 422)
+        self.assertEqual(self.activity(game_id, 'detective_answer', question='robot_input', answer='pixel_values', item_index=0)[1].status_code, 422)
+        with TestClient(create_app(self.url)) as restored:
+            self.assertEqual(len(restored.get(f'/api/sessions/{game_id}').json()['detective_answers']), 3)
+        report = collect_report(self.app.state.Session)
+        self.assertEqual(len(report['activity_events'][1]), 3)
+        self.assertEqual(report['activity_events'][1][-1]['data']['answer'], 'outside_bins')
 
     def test_default_export_has_joinable_ids_and_requires_opt_in_for_names(self):
         player_id = self.player()

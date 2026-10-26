@@ -34,7 +34,9 @@ export default function App() {
     // Wait for the new stage to render, then return to the shared navigation.
     // Instant movement also respects reduced-motion preferences.
     topNavigation.current?.scrollIntoView?.({ behavior: 'instant', block: 'start' })
-    topNavigation.current?.querySelector('[aria-current="step"]')?.focus({ preventScroll: true })
+    const dialog = document.querySelector('[aria-modal="true"]')
+    const destinationControl = dialog?.querySelector('button') || topNavigation.current?.querySelector('[aria-current="step"]')
+    destinationControl?.focus({ preventScroll: true })
   }, [view])
   useEffect(() => {
     const id = window.sessionStorage.getItem('waiste-session')
@@ -105,10 +107,12 @@ export default function App() {
   const sessionId = game?.id, trainingRunId = game?.training.run_id, enqueue = recorder.enqueue
   const recordActivity = useCallback(event => {
     if (!sessionId) return
-    const run = event.kind === 'training_plan' ? null : trainingRunId
-    enqueue({ type: 'activity', path: '/activity', body: {
-      ...event, event_id: newEventId(), ...(run ? { training_run_id: run } : {}),
-    } })
+    const run = event.training_run_id || (event.kind === 'training_plan' ? null : trainingRunId)
+    const body = { ...event, event_id: newEventId(), ...(run ? { training_run_id: run } : {}) }
+    if (event.kind === 'detective_answer') setGame(current => current?.id !== sessionId ? current : ({
+      ...current, detective_answers: [...(current.detective_answers || []), body],
+    }))
+    enqueue({ type: 'activity', path: '/activity', body })
   }, [sessionId, trainingRunId, enqueue])
   function resolve(actor, outcome, chosen, speed) {
     recorder.enqueue({ type: 'action', index: actor.index, path: `/items/${actor.index}`,
@@ -133,7 +137,7 @@ export default function App() {
         help={openGuide} onReturnToStart={returnToStart} saving={recorder.pending} saveError={recorder.error} pendingActions={recorder.pendingActions}
         onTrain={() => setView('train')} onResort={() => void newGame()} busy={busy}
         stageNavigation={<GameStages view={view} complete={complete} trainingStatus={game.training.status} onChange={setView} navigationRef={topNavigation} />} />
-      {complete && <div hidden={view === 'sort'}><LearningLab key={game.id} game={game} setGame={setGame} view={view} saving={recorder.pending} track={track} onRateSettled={recordLearningRate} onActivity={recordActivity} onBack={() => setView(view === 'explore' ? 'train' : 'sort')} onNext={() => setView('explore')} /><GameStages view={view} complete={complete} trainingStatus={game.training.status} onChange={changeStageFromBottom} bottom /></div>}
+      {complete && <div hidden={view === 'sort'}><LearningLab key={game.id} game={game} setGame={setGame} view={view} saving={recorder.pending} track={track} onRateSettled={recordLearningRate} onActivity={recordActivity} onHome={returnToStart} onBack={() => setView(view === 'explore' ? 'train' : 'sort')} onNext={() => setView('explore')} /><GameStages view={view} complete={complete} trainingStatus={game.training.status} onChange={changeStageFromBottom} bottom /></div>}
     </div>}
     {error && <p className="error" role="alert">{error}</p>}
     {guide && <HelpGuide close={closeGuide} track={track} />}

@@ -78,12 +78,16 @@ class SessionBody(BaseModel):
 class ActivityBody(BaseModel):
     model_config = ConfigDict(extra='forbid')
     event_id: UUID
-    kind: Literal['training_plan', 'epoch_review', 'weight_experiment']
+    kind: Literal['training_plan', 'epoch_review', 'weight_experiment', 'detective_answer']
     training_run_id: UUID | None = None
     goal: Literal['more_practice', 'step_size'] | None = None
     epoch: int | None = Field(default=None, ge=1, le=50, strict=True)
     response: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False, strict=True)
     weight: float | None = Field(default=None, ge=-3, le=3, allow_inf_nan=False, strict=True)
+    question: Literal['robot_input', 'predict_bin', 'test_destination'] | None = None
+    answer: Literal['pixel_values', 'item_name', 'bin_label', 'Recycling', 'Compost', 'Landfill', 'outside_bins'] | None = None
+    item_index: int | None = Field(default=None, ge=0, le=29, strict=True)
+    prediction_id: UUID | None = None
 
     @model_validator(mode='after')
     def valid_activity(self):
@@ -91,8 +95,17 @@ class ActivityBody(BaseModel):
             'training_plan': {'goal'},
             'epoch_review': {'epoch'},
             'weight_experiment': {'response', 'weight'},
+            'detective_answer': {'question', 'answer'},
         }[self.kind]
-        values = {key: getattr(self, key) for key in ('goal', 'epoch', 'response', 'weight')}
+        if self.kind == 'detective_answer':
+            allowed |= {'prediction_id'} if self.question == 'test_destination' else {'item_index'}
+            choices = {'robot_input': {'pixel_values', 'item_name', 'bin_label'},
+                       'predict_bin': {'Recycling', 'Compost', 'Landfill'},
+                       'test_destination': {'Recycling', 'Compost', 'Landfill', 'outside_bins'}}
+            if not self.training_run_id or self.answer not in choices.get(self.question, set()):
+                raise ValueError('Choose an answer for this investigation and include its training run.')
+        values = {key: getattr(self, key) for key in (
+            'goal', 'epoch', 'response', 'weight', 'question', 'answer', 'item_index', 'prediction_id')}
         if self.model_fields_set.intersection(values) - allowed:
             raise ValueError('This activity contains fields for a different activity.')
         if any(values[key] is None for key in allowed):
@@ -216,6 +229,7 @@ def create_app(database_url=None):
                 'summary': summary(actions), 'actions': [
                     {'index': a.item_index, 'outcome': a.outcome, 'chosen_class': a.chosen_class,
                      'correct': a.correct, 'expected_class': a.expected_class} for a in actions],
+                'detective_answers': detective_answers(db, game.id),
                 'training': {'status': game.training_status, 'epochs': game.training_epochs,
                              **training_settings(db, game.training_run_id),
                              'learning_rate': float(game.learning_rate), 'run_id': game.training_run_id,
@@ -265,6 +279,12 @@ def create_app(database_url=None):
             db.commit()
         return {'saved': True}
 
+    def detective_answers(db, game_id):
+        return [{'event_id': entry.id, 'training_run_id': entry.training_run_id, **entry.data}
+                for entry in db.scalars(select(ActivityEvent).where(
+                    ActivityEvent.session_id == game_id, ActivityEvent.kind == 'detective_answer')
+                    .order_by(ActivityEvent.created_at))]
+
     @app.post('/api/sessions/{game_id}/activity', status_code=201)
     def record_activity(game_id: UUID, body: ActivityBody, db=Depends(connection)):
         game = find_game(db, game_id, lock=True)
@@ -276,7 +296,32 @@ def create_app(database_url=None):
             if body.kind == 'epoch_review' and body.epoch not in {
                     entry.get('epoch') for entry in run.history}:
                 raise HTTPException(422, 'This training epoch is not available to review.')
-        data = body.model_dump(exclude={'event_id', 'kind', 'training_run_id'}, exclude_none=True)
+        data = body.model_dump(mode='json', exclude={'event_id', 'kind', 'training_run_id'}, exclude_none=True)
+        if body.kind == 'detective_answer':
+            if run.status != 'done':
+                raise HTTPException(422, 'Complete this training run before investigating it.')
+            if body.question == 'test_destination':
+                prediction = db.get(TryClick, str(body.prediction_id))
+                if prediction is None or prediction.session_id != game.id or prediction.training_run_id != run_id:
+                    raise HTTPException(422, 'This prediction does not belong to this game and training run.')
+                robot_choice = cnn.CATEGORIES[prediction.predicted_class]
+                destination = prediction.destination
+                data.update(item_name=prediction.item_name, robot_choice=robot_choice,
+                            destination=destination, matches_robot=body.answer == robot_choice,
+                            follows_guideline=body.answer == (destination if destination in cnn.CATEGORIES else 'outside_bins'))
+            else:
+                predictions = (run.results or {}).get('predictions', [])
+                if body.item_index >= len(predictions):
+                    raise HTTPException(422, 'This test item is not available in this training run.')
+                prediction = predictions[body.item_index]
+                data['item_name'] = prediction['name']
+                if body.question == 'robot_input':
+                    data['concept_correct'] = body.answer == 'pixel_values'
+                else:
+                    probabilities = prediction['probabilities']
+                    robot_choice = cnn.CATEGORIES[probabilities.index(max(probabilities))]
+                    data.update(robot_choice=robot_choice, matches_robot=body.answer == robot_choice,
+                                follows_guideline=body.answer == prediction['guideline'])
         previous = db.get(ActivityEvent, str(body.event_id))
         if previous and (previous.session_id != game.id or previous.training_run_id != run_id
                          or previous.kind != body.kind or previous.data != data):
@@ -417,12 +462,13 @@ def create_app(database_url=None):
                 raise HTTPException(503, 'The robot could not test this item. Please try again.') from None
             predicted = result['probabilities'].index(max(result['probabilities']))
             expected = cnn.CATEGORIES.index(result['destination']) if result['has_valid_bin'] else None
-            db.add(TryClick(id=str(uuid4()), session_id=session_id, training_run_id=run_id,
+            prediction_id = str(uuid4())
+            db.add(TryClick(id=prediction_id, session_id=session_id, training_run_id=run_id,
                             kind='never_seen' if novel else 'familiar', item_name=result['name'],
                             predicted_class=predicted, confidence=result['probabilities'][predicted],
                             destination=result['destination'], correct=None if expected is None else predicted == expected))
             db.commit()
-            return result
+            return {**result, 'prediction_id': prediction_id, 'training_run_id': run_id}
         finally:
             prediction_slots.release()
 
